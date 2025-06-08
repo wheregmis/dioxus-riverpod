@@ -1,3 +1,49 @@
+//! # Dioxus Riverpod Providers
+//! 
+//! This module provides a reactive state management system for Dioxus applications,
+//! inspired by Riverpod from the Flutter ecosystem.
+//! 
+//! ## Core Features
+//! 
+//! - **Future Providers**: Async operations that return data with automatic caching
+//! - **Family Providers**: Parameterized providers for dynamic data fetching
+//! - **Interval Providers**: Auto-refreshing providers for live data
+//! - **Cache Management**: Automatic caching with selective invalidation
+//! - **Reactive Updates**: UI automatically updates when data changes
+//! 
+//! ## Usage
+//! 
+//! ```rust,no_run
+//! use dioxus_riverpod::prelude::*;
+//! 
+//! #[derive(Clone, Debug, PartialEq)]
+//! struct User { name: String }
+//! 
+//! #[derive(Clone, Debug, PartialEq)]
+//! struct Data { value: i32 }
+//! 
+//! #[derive(Clone, Debug, PartialEq)]
+//! struct Post { title: String }
+//! 
+//! // Simple provider
+//! #[provider]
+//! async fn fetch_user() -> Result<User, String> {
+//!     Ok(User { name: "Alice".to_string() })
+//! }
+//! 
+//! // Provider with auto-refresh
+//! #[provider(interval_secs = 30)]
+//! async fn live_data() -> Result<Data, String> {
+//!     Ok(Data { value: 42 })
+//! }
+//! 
+//! // Family provider with parameters
+//! #[provider]
+//! async fn fetch_user_posts(user_id: u32) -> Result<Vec<Post>, String> {
+//!     Ok(vec![Post { title: format!("Post by user {}", user_id) }])
+//! }
+//! ```
+
 use dioxus_lib::prelude::*;
 use std::{
     any::Any,
@@ -10,10 +56,20 @@ use std::{
 };
 use tokio::task::JoinHandle;
 
+//
+// ============================================================================
+// Type Aliases and Core Types
+// ============================================================================
+
 /// Type alias for reactive context storage
 type ReactiveContextSet = Arc<Mutex<HashSet<ReactiveContext>>>;
 type ReactiveContextRegistry = Arc<Mutex<HashMap<String, ReactiveContextSet>>>;
 type IntervalTaskRegistry = Arc<Mutex<HashMap<String, (Duration, JoinHandle<()>)>>>;
+
+//
+// ============================================================================
+// Refresh Registry - Manages reactive updates and interval tasks
+// ============================================================================
 
 /// Global registry for refresh signals that can trigger provider re-execution
 #[derive(Clone, Default)]
@@ -125,6 +181,11 @@ impl RefreshRegistry {
         }
     }
 }
+
+//
+// ============================================================================
+// Async State Management
+// ============================================================================
 
 /// Represents the state of an async operation
 #[derive(Clone, PartialEq)]
@@ -484,18 +545,4 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
         cache.clear();
         refresh_registry.clear_all();
     }
-}
-
-/// Invalidate a specific provider cache entry
-pub fn invalidate_provider<P: FutureProvider>(cache: &ProviderCache, provider: P) {
-    cache.invalidate(&provider.id());
-}
-
-/// Invalidate a specific family provider cache entry
-pub fn invalidate_family_provider<P, Param>(cache: &ProviderCache, provider: P, param: &Param)
-where
-    P: FamilyProvider<Param>,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
-{
-    cache.invalidate(&provider.id(param));
 }
