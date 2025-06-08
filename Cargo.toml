@@ -1,0 +1,24 @@
+[package]
+name = "dioxus-riverpod"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dioxus-lib = { version = "0.6", default-features = false, features = [
+    "macro",
+    "hooks",
+    "signals",
+] }
+futures-util = "0.3.28"
+warnings = "0.2.1"
+tokio = { version = "^1", features = ["sync", "time"] }
+dioxus-riverpod-macros = { path = "./dioxus-riverpod-macros" }
+
+[dev-dependencies]
+dioxus = { version = "0.6", features = ["desktop"] }
+tokio = { version = "^1", features = ["time"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[[example]]
+name = "riverpod_style"
+path = "examples/riverpod_style.rs"
