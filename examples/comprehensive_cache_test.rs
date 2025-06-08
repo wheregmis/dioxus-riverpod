@@ -223,7 +223,7 @@ async fn live_clock() -> Result<String, String> {
 
 #[component]
 fn DataDisplay() -> Element {
-    let data_signal = use_future_provider(fetch_data);
+    let data_signal = use_provider(fetch_data, ());
 
     rsx! {
         div { style: "padding: 15px; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0;",
@@ -244,7 +244,7 @@ fn DataDisplay() -> Element {
 
 #[component]
 fn UserDataDisplay(user_id: u32, include_details: bool) -> Element {
-    let user_data = use_family_provider(fetch_user_data, (user_id, include_details));
+    let user_data = use_provider(fetch_user_data, ((user_id, include_details),));
 
     rsx! {
         div { style: "padding: 15px; border: 1px solid #007cba; border-radius: 5px; margin: 10px 0;",
@@ -278,8 +278,8 @@ fn app() -> Element {
     let mut include_details = use_signal(|| true);
 
     // Provider hooks for different provider types
-    let user_name = use_family_provider(fetch_user_name, *user_id.read());
-    let current_time = use_future_provider(fetch_current_time);
+    let user_name = use_provider(fetch_user_name, (*user_id.read(),));
+    let current_time = use_provider(fetch_current_time, ());
 
     // Invalidation hooks
     let invalidate_data = use_invalidate_provider(fetch_data);
@@ -287,7 +287,7 @@ fn app() -> Element {
         use_invalidate_family_provider(fetch_user_data, (*user_id.read(), *include_details.read()));
     let invalidate_user_name = use_invalidate_family_provider(fetch_user_name, *user_id.read());
     let invalidate_time = use_invalidate_provider(fetch_current_time);
-    let clear_cache = use_clear_provider_cache();
+    let _clear_cache = use_clear_provider_cache();
 
     rsx! {
         div { style: "padding: 20px; font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;",
@@ -471,7 +471,7 @@ fn app() -> Element {
                 // Live Clock (1-second intervals)
                 div { style: "padding: 15px; border: 1px solid #17a2b8; border-radius: 5px; margin: 10px 0; background: #e7f9fc;",
                     h4 { "🕐 Live Clock (Updates every second)" }
-                    match &*use_future_provider(live_clock).read() {
+                    match &*use_provider(live_clock, ()).read() {
                         AsyncState::Loading => rsx! {
                             p { "⏳ Loading clock..." }
                         },
@@ -487,7 +487,7 @@ fn app() -> Element {
                 // Live Server Status (5-second intervals)
                 div { style: "padding: 15px; border: 1px solid #28a745; border-radius: 5px; margin: 10px 0;",
                     h4 { "🖥️ Live Server Status (Updates every 5 seconds)" }
-                    match &*use_future_provider(live_server_status).read() {
+                    match &*use_provider(live_server_status, ()).read() {
                         AsyncState::Loading => rsx! {
                             p { "⏳ Checking server status..." }
                         },
@@ -503,7 +503,7 @@ fn app() -> Element {
                 // Live Metrics (2-second intervals)
                 div { style: "padding: 15px; border: 1px solid #007bff; border-radius: 5px; margin: 10px 0;",
                     h4 { "📊 Live System Metrics (Updates every 2 seconds)" }
-                    match &*use_future_provider(live_metrics).read() {
+                    match &*use_provider(live_metrics, ()).read() {
                         AsyncState::Loading => rsx! {
                             p { "⏳ Loading metrics..." }
                         },
@@ -534,7 +534,7 @@ fn app() -> Element {
                             }
                         }
                     }
-                    match &*use_family_provider(user_activity, *user_id.read()).read() {
+                    match &*use_provider(user_activity, (*user_id.read(),)).read() {
                         AsyncState::Loading => rsx! {
                             p { "⏳ Checking user activity..." }
                         },
@@ -559,7 +559,7 @@ fn app() -> Element {
             // Provider with 3-second cache expiration
             div { style: "padding: 15px; border: 1px solid #dc3545; border-radius: 5px; margin: 10px 0;",
                 h4 { "⏰ Data with 3-Second Cache Expiration" }
-                match &*use_future_provider(fetch_expiring_data).read() {
+                match &*use_provider(fetch_expiring_data, ()).read() {
                     AsyncState::Loading => rsx! {
                         p { "⏳ Loading expiring data..." }
                     },
@@ -575,7 +575,7 @@ fn app() -> Element {
             // Provider with 2-second cache expiration (using millis)
             div { style: "padding: 15px; border: 1px solid #e83e8c; border-radius: 5px; margin: 10px 0;",
                 h4 { "⏰ Data with 2-Second Cache Expiration (2000ms)" }
-                match &*use_future_provider(fetch_short_expiring_data).read() {
+                match &*use_provider(fetch_short_expiring_data, ()).read() {
                     AsyncState::Loading => rsx! {
                         p { "⏳ Loading short expiring data..." }
                     },
@@ -591,7 +591,7 @@ fn app() -> Element {
             // Family provider with cache expiration
             div { style: "padding: 15px; border: 1px solid #fd7e14; border-radius: 5px; margin: 10px 0;",
                 h4 { "⏰ User Data with 4-Second Cache Expiration (User {user_id})" }
-                match &*use_family_provider(fetch_expiring_user_data, *user_id.read()).read() {
+                match &*use_provider(fetch_expiring_user_data, (*user_id.read(),)).read() {
                     AsyncState::Loading => rsx! {
                         p { "⏳ Loading expiring user data..." }
                     },
@@ -607,7 +607,7 @@ fn app() -> Element {
             // Provider with both interval and cache expiration
             div { style: "padding: 15px; border: 1px solid #6610f2; border-radius: 5px; margin: 10px 0;",
                 h4 { "🔄⏰ Data with 8s Interval + 5s Cache Expiration" }
-                match &*use_future_provider(fetch_interval_with_expiration).read() {
+                match &*use_provider(fetch_interval_with_expiration, ()).read() {
                     AsyncState::Loading => rsx! {
                         p { "⏳ Loading interval + expiration data..." }
                     },

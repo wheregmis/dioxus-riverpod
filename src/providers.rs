@@ -378,6 +378,7 @@ where
 }
 
 /// Hook for using a future provider in a Dioxus component
+#[deprecated(since = "0.2.0", note = "Use `use_provider(provider, ())` instead")]
 pub fn use_future_provider<P: FutureProvider + Send>(
     provider: P,
 ) -> Signal<AsyncState<P::Output, P::Error>> {
@@ -487,6 +488,7 @@ pub fn use_future_provider<P: FutureProvider + Send>(
 }
 
 /// Hook for using a family provider in a Dioxus component
+#[deprecated(since = "0.2.0", note = "Use `use_provider(provider, (param,))` instead")]
 pub fn use_family_provider<P, Param>(
     provider: P,
     param: Param,
@@ -646,3 +648,68 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
         refresh_registry.clear_all();
     }
 }
+
+//
+// ============================================================================
+// Unified Provider Hook - Works with both Future and Family Providers
+// ============================================================================
+
+/// Trait for unified provider usage - automatically handles both future and family providers
+pub trait UseProvider<Args> {
+    type Output: Clone + PartialEq + Send + Sync + 'static;
+    type Error: Clone + Send + Sync + 'static;
+
+    fn use_provider(self, args: Args) -> Signal<AsyncState<Self::Output, Self::Error>>;
+}
+
+/// Implementation for future providers (no parameters)
+impl<P> UseProvider<()> for P
+where
+    P: FutureProvider + Send,
+{
+    type Output = P::Output;
+    type Error = P::Error;
+
+    fn use_provider(self, _args: ()) -> Signal<AsyncState<Self::Output, Self::Error>> {
+        #[allow(deprecated)]
+        use_future_provider(self)
+    }
+}
+
+/// Implementation for family providers (with parameters)
+impl<P, Param> UseProvider<(Param,)> for P
+where
+    P: FamilyProvider<Param> + Send,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    type Output = P::Output;
+    type Error = P::Error;
+
+    fn use_provider(self, args: (Param,)) -> Signal<AsyncState<Self::Output, Self::Error>> {
+        #[allow(deprecated)]
+        use_family_provider(self, args.0)
+    }
+}
+
+/// Unified hook for using any provider - automatically detects future vs family providers
+///
+/// ## Usage
+///
+/// ```rust,no_run
+/// // Future provider (no parameters)
+/// let data = use_provider(fetch_data, ());
+///
+/// // Family provider (with parameters)
+/// let user_data = use_provider(fetch_user, (user_id,));
+/// ```
+pub fn use_provider<P, Args>(provider: P, args: Args) -> Signal<AsyncState<P::Output, P::Error>>
+where
+    P: UseProvider<Args>,
+{
+    provider.use_provider(args)
+}
+
+//
+// ============================================================================
+// Legacy Provider Hooks (for backward compatibility)
+// ============================================================================

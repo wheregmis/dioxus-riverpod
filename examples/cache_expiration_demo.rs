@@ -44,7 +44,7 @@ fn DataSection(trigger: Signal<i32>) -> Element {
         div {
             h3 { "📦 Future Provider with 2s Cache Expiration" }
             div { style: "padding: 15px; border: 1px solid #dc3545; border-radius: 5px; margin: 10px 0;",
-                match &*use_future_provider(fetch_expiring_data).read() {
+                match &*use_provider(fetch_expiring_data, ()).read() {
                     AsyncState::Loading => rsx! {
                         p { style: "color: #orange;", "⏳ Loading..." }
                     },
@@ -58,7 +58,7 @@ fn DataSection(trigger: Signal<i32>) -> Element {
             }
             h3 { "👤 Family Provider with 3s Cache Expiration (User 1)" }
             div { style: "padding: 15px; border: 1px solid #28a745; border-radius: 5px; margin: 10px 0;",
-                match &*use_family_provider(fetch_user_data, 1u32).read() {
+                match &*use_provider(fetch_user_data, (1u32,)).read() {
                     AsyncState::Loading => rsx! {
                         p { style: "color: #orange;", "⏳ Loading user data..." }
                     },
