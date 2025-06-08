@@ -377,234 +377,6 @@ where
     }
 }
 
-/// Hook for using a future provider in a Dioxus component
-#[deprecated(since = "0.2.0", note = "Use `use_provider(provider, ())` instead")]
-pub fn use_future_provider<P: FutureProvider + Send>(
-    provider: P,
-) -> Signal<AsyncState<P::Output, P::Error>> {
-    let mut state = use_signal(|| AsyncState::Loading);
-    let cache = use_context::<ProviderCache>();
-    let refresh_registry = use_context::<RefreshRegistry>();
-
-    // Check cache expiration before the memo - this happens on every render
-    let cache_key = provider.id();
-    let cache_expiration = provider.cache_expiration();
-
-    // If cache expiration is enabled, check if current cache entry is expired and remove it
-    if let Some(expiration) = cache_expiration {
-        if let Ok(mut cache_lock) = cache.cache.lock() {
-            if let Some(entry) = cache_lock.get(&cache_key) {
-                if entry.is_expired(expiration) {
-                    println!(
-                        "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
-                        cache_key
-                    );
-                    cache_lock.remove(&cache_key);
-                    // Trigger a refresh to re-execute the provider
-                    refresh_registry.trigger_refresh(&cache_key);
-                }
-            }
-        }
-    }
-
-    // Use memo with reactive dependencies to track changes automatically
-    let _execution_memo = use_memo(use_reactive!(|provider| {
-        let cache_key = provider.id();
-
-        // Subscribe to refresh events for this cache key if we have a reactive context
-        if let Some(reactive_context) = ReactiveContext::current() {
-            refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
-        }
-
-        // Read the current refresh count (this makes the memo reactive to changes)
-        let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
-
-        // Set up interval task if provider has interval configured
-        if let Some(interval) = provider.interval() {
-            let cache_clone = cache.clone();
-            let provider_clone = provider.clone();
-            let cache_key_clone = cache_key.clone();
-            let refresh_registry_clone = refresh_registry.clone();
-
-            refresh_registry.start_interval_task(&cache_key, interval, move || {
-                // Re-execute the provider and update cache in background
-                let cache_for_task = cache_clone.clone();
-                let provider_for_task = provider_clone.clone();
-                let cache_key_for_task = cache_key_clone.clone();
-                let refresh_registry_for_task = refresh_registry_clone.clone();
-
-                tokio::spawn(async move {
-                    let result = provider_for_task.run().await;
-                    cache_for_task.set(cache_key_for_task.clone(), result);
-
-                    // Trigger refresh to mark reactive contexts as dirty and update UI
-                    refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
-                });
-            });
-        }
-
-        // Check cache first, with expiration if specified
-        let cache_expiration = provider.cache_expiration();
-        if let Some(cached_result) =
-            cache.get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
-        {
-            match cached_result {
-                Ok(data) => {
-                    let _ = spawn(async move {
-                        state.set(AsyncState::Success(data));
-                    });
-                }
-                Err(error) => {
-                    let _ = spawn(async move {
-                        state.set(AsyncState::Error(error));
-                    });
-                }
-            }
-            return;
-        }
-
-        // Cache miss - set loading and spawn async task
-        let _ = spawn(async move {
-            state.set(AsyncState::Loading);
-        });
-
-        let cache = cache.clone();
-        let cache_key = cache_key.clone();
-        let provider = provider.clone();
-        let mut state_for_async = state;
-
-        spawn(async move {
-            let result = provider.run().await;
-            cache.set(cache_key, result.clone());
-
-            match result {
-                Ok(data) => state_for_async.set(AsyncState::Success(data)),
-                Err(error) => state_for_async.set(AsyncState::Error(error)),
-            }
-        });
-    }));
-
-    state
-}
-
-/// Hook for using a family provider in a Dioxus component
-#[deprecated(since = "0.2.0", note = "Use `use_provider(provider, (param,))` instead")]
-pub fn use_family_provider<P, Param>(
-    provider: P,
-    param: Param,
-) -> Signal<AsyncState<P::Output, P::Error>>
-where
-    P: FamilyProvider<Param> + Send,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
-{
-    let mut state = use_signal(|| AsyncState::Loading);
-    let cache = use_context::<ProviderCache>();
-    let refresh_registry = use_context::<RefreshRegistry>();
-
-    // Check cache expiration before the memo - this happens on every render
-    let cache_key = provider.id(&param);
-    let cache_expiration = provider.cache_expiration();
-
-    // If cache expiration is enabled, check if current cache entry is expired and remove it
-    if let Some(expiration) = cache_expiration {
-        if let Ok(mut cache_lock) = cache.cache.lock() {
-            if let Some(entry) = cache_lock.get(&cache_key) {
-                if entry.is_expired(expiration) {
-                    println!(
-                        "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
-                        cache_key
-                    );
-                    cache_lock.remove(&cache_key);
-                    // Trigger a refresh to re-execute the provider
-                    refresh_registry.trigger_refresh(&cache_key);
-                }
-            }
-        }
-    }
-
-    // Use memo with reactive dependencies to track changes automatically
-    let _execution_memo = use_memo(use_reactive!(|provider, param| {
-        let cache_key = provider.id(&param);
-
-        // Subscribe to refresh events for this cache key if we have a reactive context
-        if let Some(reactive_context) = ReactiveContext::current() {
-            refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
-        }
-
-        // Read the current refresh count (this makes the memo reactive to changes)
-        let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
-
-        // Set up interval task if provider has interval configured
-        if let Some(interval) = provider.interval() {
-            let cache_clone = cache.clone();
-            let provider_clone = provider.clone();
-            let param_clone = param.clone();
-            let cache_key_clone = cache_key.clone();
-            let refresh_registry_clone = refresh_registry.clone();
-
-            refresh_registry.start_interval_task(&cache_key, interval, move || {
-                // Re-execute the provider and update cache in background
-                let cache_for_task = cache_clone.clone();
-                let provider_for_task = provider_clone.clone();
-                let param_for_task = param_clone.clone();
-                let cache_key_for_task = cache_key_clone.clone();
-                let refresh_registry_for_task = refresh_registry_clone.clone();
-
-                tokio::spawn(async move {
-                    let result = provider_for_task.run(param_for_task).await;
-                    cache_for_task.set(cache_key_for_task.clone(), result);
-
-                    // Trigger refresh to mark reactive contexts as dirty and update UI
-                    refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
-                });
-            });
-        }
-
-        // Check cache first, with expiration if specified
-        let cache_expiration = provider.cache_expiration();
-        if let Some(cached_result) =
-            cache.get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
-        {
-            match cached_result {
-                Ok(data) => {
-                    let _ = spawn(async move {
-                        state.set(AsyncState::Success(data));
-                    });
-                }
-                Err(error) => {
-                    let _ = spawn(async move {
-                        state.set(AsyncState::Error(error));
-                    });
-                }
-            }
-            return;
-        }
-
-        // Cache miss - set loading and spawn async task
-        let _ = spawn(async move {
-            state.set(AsyncState::Loading);
-        });
-
-        let cache = cache.clone();
-        let cache_key = cache_key.clone();
-        let provider = provider.clone();
-        let param = param.clone();
-        let mut state_for_async = state;
-
-        spawn(async move {
-            let result = provider.run(param).await;
-            cache.set(cache_key, result.clone());
-
-            match result {
-                Ok(data) => state_for_async.set(AsyncState::Success(data)),
-                Err(error) => state_for_async.set(AsyncState::Error(error)),
-            }
-        });
-    }));
-
-    state
-}
-
 /// Hook to access the provider cache for manual cache management  
 pub fn use_provider_cache() -> ProviderCache {
     use_context::<ProviderCache>()
@@ -671,8 +443,110 @@ where
     type Error = P::Error;
 
     fn use_provider(self, _args: ()) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        #[allow(deprecated)]
-        use_future_provider(self)
+        let provider = self;
+        let mut state = use_signal(|| AsyncState::Loading);
+        let cache = use_context::<ProviderCache>();
+        let refresh_registry = use_context::<RefreshRegistry>();
+
+        // Check cache expiration before the memo - this happens on every render
+        let cache_key = provider.id();
+        let cache_expiration = provider.cache_expiration();
+
+        // If cache expiration is enabled, check if current cache entry is expired and remove it
+        if let Some(expiration) = cache_expiration {
+            if let Ok(mut cache_lock) = cache.cache.lock() {
+                if let Some(entry) = cache_lock.get(&cache_key) {
+                    if entry.is_expired(expiration) {
+                        println!(
+                            "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
+                            cache_key
+                        );
+                        cache_lock.remove(&cache_key);
+                        // Trigger a refresh to re-execute the provider
+                        refresh_registry.trigger_refresh(&cache_key);
+                    }
+                }
+            }
+        }
+
+        // Use memo with reactive dependencies to track changes automatically
+        let _execution_memo = use_memo(use_reactive!(|provider| {
+            let cache_key = provider.id();
+
+            // Subscribe to refresh events for this cache key if we have a reactive context
+            if let Some(reactive_context) = ReactiveContext::current() {
+                refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
+            }
+
+            // Read the current refresh count (this makes the memo reactive to changes)
+            let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
+
+            // Set up interval task if provider has interval configured
+            if let Some(interval) = provider.interval() {
+                let cache_clone = cache.clone();
+                let provider_clone = provider.clone();
+                let cache_key_clone = cache_key.clone();
+                let refresh_registry_clone = refresh_registry.clone();
+
+                refresh_registry.start_interval_task(&cache_key, interval, move || {
+                    // Re-execute the provider and update cache in background
+                    let cache_for_task = cache_clone.clone();
+                    let provider_for_task = provider_clone.clone();
+                    let cache_key_for_task = cache_key_clone.clone();
+                    let refresh_registry_for_task = refresh_registry_clone.clone();
+
+                    tokio::spawn(async move {
+                        let result = provider_for_task.run().await;
+                        cache_for_task.set(cache_key_for_task.clone(), result);
+
+                        // Trigger refresh to mark reactive contexts as dirty and update UI
+                        refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
+                    });
+                });
+            }
+
+            // Check cache first, with expiration if specified
+            let cache_expiration = provider.cache_expiration();
+            if let Some(cached_result) =
+                cache.get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
+            {
+                match cached_result {
+                    Ok(data) => {
+                        let _ = spawn(async move {
+                            state.set(AsyncState::Success(data));
+                        });
+                    }
+                    Err(error) => {
+                        let _ = spawn(async move {
+                            state.set(AsyncState::Error(error));
+                        });
+                    }
+                }
+                return;
+            }
+
+            // Cache miss - set loading and spawn async task
+            let _ = spawn(async move {
+                state.set(AsyncState::Loading);
+            });
+
+            let cache = cache.clone();
+            let cache_key = cache_key.clone();
+            let provider = provider.clone();
+            let mut state_for_async = state;
+
+            spawn(async move {
+                let result = provider.run().await;
+                cache.set(cache_key, result.clone());
+
+                match result {
+                    Ok(data) => state_for_async.set(AsyncState::Success(data)),
+                    Err(error) => state_for_async.set(AsyncState::Error(error)),
+                }
+            });
+        }));
+
+        state
     }
 }
 
@@ -686,8 +560,114 @@ where
     type Error = P::Error;
 
     fn use_provider(self, args: (Param,)) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        #[allow(deprecated)]
-        use_family_provider(self, args.0)
+        let provider = self;
+        let param = args.0;
+        let mut state = use_signal(|| AsyncState::Loading);
+        let cache = use_context::<ProviderCache>();
+        let refresh_registry = use_context::<RefreshRegistry>();
+
+        // Check cache expiration before the memo - this happens on every render
+        let cache_key = provider.id(&param);
+        let cache_expiration = provider.cache_expiration();
+
+        // If cache expiration is enabled, check if current cache entry is expired and remove it
+        if let Some(expiration) = cache_expiration {
+            if let Ok(mut cache_lock) = cache.cache.lock() {
+                if let Some(entry) = cache_lock.get(&cache_key) {
+                    if entry.is_expired(expiration) {
+                        println!(
+                            "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
+                            cache_key
+                        );
+                        cache_lock.remove(&cache_key);
+                        // Trigger a refresh to re-execute the provider
+                        refresh_registry.trigger_refresh(&cache_key);
+                    }
+                }
+            }
+        }
+
+        // Use memo with reactive dependencies to track changes automatically
+        let _execution_memo = use_memo(use_reactive!(|provider, param| {
+            let cache_key = provider.id(&param);
+
+            // Subscribe to refresh events for this cache key if we have a reactive context
+            if let Some(reactive_context) = ReactiveContext::current() {
+                refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
+            }
+
+            // Read the current refresh count (this makes the memo reactive to changes)
+            let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
+
+            // Set up interval task if provider has interval configured
+            if let Some(interval) = provider.interval() {
+                let cache_clone = cache.clone();
+                let provider_clone = provider.clone();
+                let param_clone = param.clone();
+                let cache_key_clone = cache_key.clone();
+                let refresh_registry_clone = refresh_registry.clone();
+
+                refresh_registry.start_interval_task(&cache_key, interval, move || {
+                    // Re-execute the provider and update cache in background
+                    let cache_for_task = cache_clone.clone();
+                    let provider_for_task = provider_clone.clone();
+                    let param_for_task = param_clone.clone();
+                    let cache_key_for_task = cache_key_clone.clone();
+                    let refresh_registry_for_task = refresh_registry_clone.clone();
+
+                    tokio::spawn(async move {
+                        let result = provider_for_task.run(param_for_task).await;
+                        cache_for_task.set(cache_key_for_task.clone(), result);
+
+                        // Trigger refresh to mark reactive contexts as dirty and update UI
+                        refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
+                    });
+                });
+            }
+
+            // Check cache first, with expiration if specified
+            let cache_expiration = provider.cache_expiration();
+            if let Some(cached_result) =
+                cache.get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
+            {
+                match cached_result {
+                    Ok(data) => {
+                        let _ = spawn(async move {
+                            state.set(AsyncState::Success(data));
+                        });
+                    }
+                    Err(error) => {
+                        let _ = spawn(async move {
+                            state.set(AsyncState::Error(error));
+                        });
+                    }
+                }
+                return;
+            }
+
+            // Cache miss - set loading and spawn async task
+            let _ = spawn(async move {
+                state.set(AsyncState::Loading);
+            });
+
+            let cache = cache.clone();
+            let cache_key = cache_key.clone();
+            let provider = provider.clone();
+            let param = param.clone();
+            let mut state_for_async = state;
+
+            spawn(async move {
+                let result = provider.run(param).await;
+                cache.set(cache_key, result.clone());
+
+                match result {
+                    Ok(data) => state_for_async.set(AsyncState::Success(data)),
+                    Err(error) => state_for_async.set(AsyncState::Error(error)),
+                }
+            });
+        }));
+
+        state
     }
 }
 
@@ -695,11 +675,14 @@ where
 ///
 /// ## Usage
 ///
-/// ```rust,no_run
+/// ```rust,ignore
+/// use dioxus::prelude::*;
+/// use dioxus_riverpod::prelude::*;
+/// 
 /// // Future provider (no parameters)
 /// let data = use_provider(fetch_data, ());
 ///
-/// // Family provider (with parameters)
+/// // Family provider (with parameters)  
 /// let user_data = use_provider(fetch_user, (user_id,));
 /// ```
 pub fn use_provider<P, Args>(provider: P, args: Args) -> Signal<AsyncState<P::Output, P::Error>>
@@ -709,7 +692,4 @@ where
     provider.use_provider(args)
 }
 
-//
-// ============================================================================
-// Legacy Provider Hooks (for backward compatibility)
-// ============================================================================
+
