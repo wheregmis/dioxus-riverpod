@@ -27,6 +27,7 @@ dioxus = "0.6"
 ### Future Providers (No Parameters)
 
 ```rust
+use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
 use std::time::Duration;
 
@@ -53,6 +54,10 @@ fn TimeDisplay() -> Element {
 ### Family Providers (With Parameters)
 
 ```rust
+use dioxus::prelude::*;
+use dioxus_riverpod::prelude::*;
+use std::time::Duration;
+
 #[provider]
 async fn user_name(id: usize) -> Result<String, String> {
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -80,6 +85,21 @@ fn UserCard(id: usize) -> Element {
 ### Provider Composition
 
 ```rust
+use dioxus::prelude::*;
+use dioxus_riverpod::prelude::*;
+use std::time::Duration;
+
+// First define the user_name provider
+#[provider]
+async fn user_name(id: usize) -> Result<String, String> {
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    match id {
+        1 => Ok("Alice".to_string()),
+        2 => Ok("Bob".to_string()),
+        _ => Err("User not found".to_string()),
+    }
+}
+
 #[provider]
 async fn user_details(id: usize) -> Result<(String, u8, String), String> {
     // Compose other providers!
@@ -113,26 +133,6 @@ pub enum AsyncState<T, E> {
     Loading,           // Operation in progress
     Success(T),        // Operation completed successfully
     Error(E),          // Operation failed
-}
-```
-
-## 🛠️ Advanced Features
-
-### Suspense Support (Experimental)
-
-```rust
-#[component]
-fn UserProfile(id: usize) -> Element {
-    // This will suspend the component until data is ready
-    let user = use_family_provider_suspense(user_details, id)?;
-    
-    rsx! {
-        div {
-            h1 { "{user.0}" }  // name
-            p { "Age: {user.1}" }  // age  
-            p { "Role: {user.2}" }  // role
-        }
-    }
 }
 ```
 

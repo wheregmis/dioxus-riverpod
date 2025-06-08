@@ -118,6 +118,10 @@ fn SuspenseExample() -> Element {
 }
 
 fn app() -> Element {
+    // Provide the cache and refresh registry contexts at the app level
+    use_context_provider(ProviderCache::new);
+    use_context_provider(RefreshRegistry::new);
+
     rsx!(
         div { style: "font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;",
             h1 { "🚀 Dioxus Riverpod-Style Providers Demo" }

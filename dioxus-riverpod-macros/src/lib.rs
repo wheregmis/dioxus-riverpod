@@ -80,10 +80,8 @@ fn generate_family_provider(input_fn: ItemFn) -> Result<TokenStream2> {
     let fn_attrs = &input_fn.attrs;
     let fn_block = &input_fn.block;
 
-    // Extract parameter information
-    let param_info = extract_first_param(&input_fn)?;
-    let param_name = &param_info.name;
-    let param_type = &param_info.ty;
+    // Extract all parameters (support multiple parameters)
+    let params = extract_all_params(&input_fn)?;
 
     // Extract return type from Result<T, E>
     let (output_type, error_type) = extract_result_types(&input_fn.sig.output)?;
@@ -94,35 +92,85 @@ fn generate_family_provider(input_fn: ItemFn) -> Result<TokenStream2> {
         fn_name.span(),
     );
 
-    Ok(quote! {
-        #(#fn_attrs)*
-        #[derive(Clone, PartialEq)]
-        #fn_vis struct #struct_name;
+    // Handle single vs multiple parameters
+    if params.len() == 1 {
+        // Single parameter - keep existing behavior
+        let param = &params[0];
+        let param_name = &param.name;
+        let param_type = &param.ty;
 
-        impl #struct_name {
-            #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
-                #fn_block
+        Ok(quote! {
+            #(#fn_attrs)*
+            #[derive(Clone, PartialEq)]
+            #fn_vis struct #struct_name;
+
+            impl #struct_name {
+                #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
+                    #fn_block
+                }
             }
-        }
 
-        impl ::dioxus_riverpod::providers::FamilyProvider<#param_type> for #struct_name {
-            type Output = #output_type;
-            type Error = #error_type;
+            impl ::dioxus_riverpod::providers::FamilyProvider<#param_type> for #struct_name {
+                type Output = #output_type;
+                type Error = #error_type;
 
-            fn run(&self, #param_name: #param_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
-                Self::call(#param_name)
+                fn run(&self, #param_name: #param_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                    Self::call(#param_name)
+                }
+
+                fn id(&self, param: &#param_type) -> String {
+                    format!("{}({:?})", stringify!(#struct_name), param)
+                }
             }
 
-            fn id(&self, param: &#param_type) -> String {
-                format!("{}({:?})", stringify!(#struct_name), param)
-            }
-        }
+            // Create a constant instance for easy usage
+            // Allow snake_case for ergonomic usage while suppressing the naming warning
+            #[allow(non_upper_case_globals)]
+            #fn_vis const #fn_name: #struct_name = #struct_name;
+        })
+    } else {
+        // Multiple parameters - create a tuple type
+        let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
+        let param_types: Vec<_> = params.iter().map(|p| &p.ty).collect();
 
-        // Create a constant instance for easy usage
-        // Allow snake_case for ergonomic usage while suppressing the naming warning
-        #[allow(non_upper_case_globals)]
-        #fn_vis const #fn_name: #struct_name = #struct_name;
-    })
+        // Create tuple type for parameters
+        let tuple_type = if param_types.len() == 2 {
+            quote! { (#(#param_types),*) }
+        } else {
+            quote! { (#(#param_types,)*) }
+        };
+
+        Ok(quote! {
+            #(#fn_attrs)*
+            #[derive(Clone, PartialEq)]
+            #fn_vis struct #struct_name;
+
+            impl #struct_name {
+                #fn_vis async fn call(#(#param_names: #param_types),*) -> Result<#output_type, #error_type> {
+                    #fn_block
+                }
+            }
+
+            impl ::dioxus_riverpod::providers::FamilyProvider<#tuple_type> for #struct_name {
+                type Output = #output_type;
+                type Error = #error_type;
+
+                fn run(&self, params: #tuple_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                    let (#(#param_names),*) = params;
+                    Self::call(#(#param_names),*)
+                }
+
+                fn id(&self, params: &#tuple_type) -> String {
+                    format!("{}({:?})", stringify!(#struct_name), params)
+                }
+            }
+
+            // Create a constant instance for easy usage
+            // Allow snake_case for ergonomic usage while suppressing the naming warning
+            #[allow(non_upper_case_globals)]
+            #fn_vis const #fn_name: #struct_name = #struct_name;
+        })
+    }
 }
 
 struct ParamInfo {
@@ -130,30 +178,42 @@ struct ParamInfo {
     ty: Type,
 }
 
-fn extract_first_param(input_fn: &ItemFn) -> Result<ParamInfo> {
-    let first_arg = input_fn.sig.inputs.first().ok_or_else(|| {
-        syn::Error::new_spanned(
+fn extract_all_params(input_fn: &ItemFn) -> Result<Vec<ParamInfo>> {
+    if input_fn.sig.inputs.is_empty() {
+        return Err(syn::Error::new_spanned(
             &input_fn.sig,
             "Family provider must have at least one parameter",
-        )
-    })?;
-
-    match first_arg {
-        FnArg::Typed(PatType { pat, ty, .. }) => match pat.as_ref() {
-            Pat::Ident(pat_ident) => Ok(ParamInfo {
-                name: pat_ident.ident.clone(),
-                ty: (**ty).clone(),
-            }),
-            _ => Err(syn::Error::new_spanned(
-                pat,
-                "Parameter must be a simple identifier",
-            )),
-        },
-        FnArg::Receiver(_) => Err(syn::Error::new_spanned(
-            first_arg,
-            "Provider functions cannot have self parameter",
-        )),
+        ));
     }
+
+    let mut params = Vec::new();
+
+    for arg in &input_fn.sig.inputs {
+        match arg {
+            FnArg::Typed(PatType { pat, ty, .. }) => match pat.as_ref() {
+                Pat::Ident(pat_ident) => {
+                    params.push(ParamInfo {
+                        name: pat_ident.ident.clone(),
+                        ty: (**ty).clone(),
+                    });
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        pat,
+                        "Parameter must be a simple identifier",
+                    ));
+                }
+            },
+            FnArg::Receiver(_) => {
+                return Err(syn::Error::new_spanned(
+                    arg,
+                    "Provider functions cannot have self parameter",
+                ));
+            }
+        }
+    }
+
+    Ok(params)
 }
 
 fn extract_result_types(return_type: &ReturnType) -> Result<(Type, Type)> {

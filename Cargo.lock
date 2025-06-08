@@ -1131,6 +1131,8 @@ dependencies = [
  "dioxus-lib",
  "dioxus-riverpod-macros",
  "futures-util",
+ "serde",
+ "serde_json",
  "tokio",
  "warnings",
 ]

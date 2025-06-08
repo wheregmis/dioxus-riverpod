@@ -1,10 +1,76 @@
 use dioxus_lib::prelude::*;
-use std::any::Any;
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::future::Future;
-use std::hash::Hash;
-use std::sync::{Arc, Mutex};
+use std::{
+    any::Any,
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    future::Future,
+    hash::Hash,
+    sync::{Arc, Mutex},
+};
+
+/// Type alias for reactive context storage
+type ReactiveContextSet = Arc<Mutex<HashSet<ReactiveContext>>>;
+type ReactiveContextRegistry = Arc<Mutex<HashMap<String, ReactiveContextSet>>>;
+
+/// Global registry for refresh signals that can trigger provider re-execution
+#[derive(Clone, Default)]
+pub struct RefreshRegistry {
+    refresh_counters: Arc<Mutex<HashMap<String, u64>>>,
+    reactive_contexts: ReactiveContextRegistry,
+}
+
+impl RefreshRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn get_refresh_count(&self, key: &str) -> u64 {
+        if let Ok(counters) = self.refresh_counters.lock() {
+            *counters.get(key).unwrap_or(&0)
+        } else {
+            0
+        }
+    }
+
+    pub fn subscribe_to_refresh(&self, key: &str, reactive_context: ReactiveContext) {
+        if let Ok(mut contexts) = self.reactive_contexts.lock() {
+            let key_contexts = contexts.entry(key.to_string()).or_insert_with(|| Arc::new(Mutex::new(HashSet::new())));
+            if let Ok(mut context_set) = key_contexts.lock() {
+                context_set.insert(reactive_context);
+            }
+        }
+    }
+
+    pub fn trigger_refresh(&self, key: &str) {
+        // Increment the counter
+        if let Ok(mut counters) = self.refresh_counters.lock() {
+            let counter = counters.entry(key.to_string()).or_insert(0);
+            *counter += 1;
+        }
+
+        // Mark all reactive contexts as dirty
+        if let Ok(contexts) = self.reactive_contexts.lock() {
+            if let Some(key_contexts) = contexts.get(key) {
+                if let Ok(context_set) = key_contexts.lock() {
+                    for reactive_context in context_set.iter() {
+                        reactive_context.mark_dirty();
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn clear_all(&self) {
+        if let Ok(counters) = self.refresh_counters.lock() {
+            let keys: Vec<String> = counters.keys().cloned().collect();
+            drop(counters);
+            
+            for key in keys {
+                self.trigger_refresh(&key);
+            }
+        }
+    }
+}
 
 /// Represents the state of an async operation
 #[derive(Clone, PartialEq)]
@@ -50,7 +116,7 @@ impl<T, E> AsyncState<T, E> {
     }
 }
 
-/// A type-erased cache entry that can hold any cloneable data
+/// A type-erased cache entry for storing provider results
 #[derive(Clone)]
 struct CacheEntry {
     data: Arc<dyn Any + Send + Sync>,
@@ -68,36 +134,38 @@ impl CacheEntry {
     }
 }
 
-/// Global cache for provider results
+/// Global cache for provider results with automatic cleanup
 #[derive(Clone, Default)]
 pub struct ProviderCache {
     cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
 }
 
 impl ProviderCache {
+    /// Create a new provider cache
     pub fn new() -> Self {
-        Self {
-            cache: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self::default()
     }
 
+    /// Get a cached result by key
     pub fn get<T: Clone + Send + Sync + 'static>(&self, key: &str) -> Option<T> {
-        let cache = self.cache.lock().ok()?;
-        cache.get(key)?.get::<T>()
+        self.cache.lock().ok()?.get(key)?.get::<T>()
     }
 
+    /// Store a result in the cache
     pub fn set<T: Clone + Send + Sync + 'static>(&self, key: String, value: T) {
         if let Ok(mut cache) = self.cache.lock() {
             cache.insert(key, CacheEntry::new(value));
         }
     }
 
+    /// Remove a specific cache entry
     pub fn invalidate(&self, key: &str) {
         if let Ok(mut cache) = self.cache.lock() {
             cache.remove(key);
         }
     }
 
+    /// Clear all cached entries
     pub fn clear(&self) {
         if let Ok(mut cache) = self.cache.lock() {
             cache.clear();
@@ -136,44 +204,59 @@ where
 pub fn use_future_provider<P: FutureProvider>(
     provider: P,
 ) -> Signal<AsyncState<P::Output, P::Error>> {
-    let state = use_signal(|| AsyncState::Loading);
-
-    // Get or create the provider cache using use_context_provider
-    let cache = use_context_provider(ProviderCache::new);
-    let cache_key = provider.id();
-
-    // Use hook to run only once per component instance
-    use_hook(move || {
-        let cache = cache.clone();
-        let cache_key = cache_key.clone();
-        let provider = provider.clone();
-        let mut state = state;
-
+    let mut state = use_signal(|| AsyncState::Loading);
+    let cache = use_context::<ProviderCache>();
+    let refresh_registry = use_context::<RefreshRegistry>();
+    
+    // Use memo with reactive dependencies to track changes automatically
+    let _execution_memo = use_memo(use_reactive!(|provider| {
+        let cache_key = provider.id();
+        
+        // Subscribe to refresh events for this cache key if we have a reactive context
+        if let Some(reactive_context) = ReactiveContext::current() {
+            refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
+        }
+        
+        // Read the current refresh count (this makes the memo reactive to changes)
+        let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
+        
         // Check cache first
         if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
             match cached_result {
-                Ok(data) => state.set(AsyncState::Success(data)),
-                Err(error) => state.set(AsyncState::Error(error)),
+                Ok(data) => {
+                    let _ = spawn(async move {
+                        state.set(AsyncState::Success(data));
+                    });
+                },
+                Err(error) => {
+                    let _ = spawn(async move {
+                        state.set(AsyncState::Error(error));
+                    });
+                },
             }
-        } else {
-            // Set loading state
-            state.set(AsyncState::Loading);
-
-            // Spawn async task to fetch data
-            spawn(async move {
-                let result = provider.run().await;
-
-                // Cache the result
-                cache.set(cache_key.clone(), result.clone());
-
-                // Update the state
-                match result {
-                    Ok(data) => state.set(AsyncState::Success(data)),
-                    Err(error) => state.set(AsyncState::Error(error)),
-                }
-            });
+            return;
         }
-    });
+
+        // Cache miss - set loading and spawn async task
+        let _ = spawn(async move {
+            state.set(AsyncState::Loading);
+        });
+
+        let cache = cache.clone();
+        let cache_key = cache_key.clone();
+        let provider = provider.clone();
+        let mut state_for_async = state;
+
+        spawn(async move {
+            let result = provider.run().await;
+            cache.set(cache_key, result.clone());
+
+            match result {
+                Ok(data) => state_for_async.set(AsyncState::Success(data)),
+                Err(error) => state_for_async.set(AsyncState::Error(error)),
+            }
+        });
+    }));
 
     state
 }
@@ -187,111 +270,118 @@ where
     P: FamilyProvider<Param>,
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
-    let state = use_signal(|| AsyncState::Loading);
+    let mut state = use_signal(|| AsyncState::Loading);
+    let cache = use_context::<ProviderCache>();
+    let refresh_registry = use_context::<RefreshRegistry>();
+    
+    // Use memo with reactive dependencies to track changes automatically
+    let _execution_memo = use_memo(use_reactive!(|provider, param| {
+        let cache_key = provider.id(&param);
+        
+        // Subscribe to refresh events for this cache key if we have a reactive context
+        if let Some(reactive_context) = ReactiveContext::current() {
+            refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
+        }
+        
+        // Read the current refresh count (this makes the memo reactive to changes)
+        let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
+        
+        // Check cache first
+        if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
+            match cached_result {
+                Ok(data) => {
+                    let _ = spawn(async move {
+                        state.set(AsyncState::Success(data));
+                    });
+                },
+                Err(error) => {
+                    let _ = spawn(async move {
+                        state.set(AsyncState::Error(error));
+                    });
+                },
+            }
+            return;
+        }
 
-    // Get or create the provider cache
-    let cache = use_context_provider(ProviderCache::new);
-    let cache_key = provider.id(&param);
+        // Cache miss - set loading and spawn async task
+        let _ = spawn(async move {
+            state.set(AsyncState::Loading);
+        });
 
-    // Use hook to run only once per component instance
-    use_hook(move || {
         let cache = cache.clone();
         let cache_key = cache_key.clone();
         let provider = provider.clone();
         let param = param.clone();
-        let mut state = state;
+        let mut state_for_async = state;
 
-        // Check cache first
-        if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
-            match cached_result {
-                Ok(data) => state.set(AsyncState::Success(data)),
-                Err(error) => state.set(AsyncState::Error(error)),
+        spawn(async move {
+            let result = provider.run(param).await;
+            cache.set(cache_key, result.clone());
+
+            match result {
+                Ok(data) => state_for_async.set(AsyncState::Success(data)),
+                Err(error) => state_for_async.set(AsyncState::Error(error)),
             }
-        } else {
-            // Set loading state
-            state.set(AsyncState::Loading);
-
-            // Spawn async task to fetch data
-            spawn(async move {
-                let result = provider.run(param).await;
-
-                // Cache the result
-                cache.set(cache_key.clone(), result.clone());
-
-                // Update the state
-                match result {
-                    Ok(data) => state.set(AsyncState::Success(data)),
-                    Err(error) => state.set(AsyncState::Error(error)),
-                }
-            });
-        }
-    });
+        });
+    }));
 
     state
 }
 
-/// Hook for using a future provider with suspense support
-pub fn use_future_provider_suspense<P: FutureProvider>(provider: P) -> Result<P::Output, P::Error> {
-    let state = use_future_provider(provider);
-
-    let current_state = state.read();
-    match &*current_state {
-        AsyncState::Loading => {
-            // For now, we'll handle suspense differently
-            // In a real implementation, this would need proper suspense support
-            panic!("Component should be wrapped in SuspenseBoundary - data is still loading")
-        }
-        AsyncState::Success(data) => Ok(data.clone()),
-        AsyncState::Error(error) => Err(error.clone()),
-    }
-}
-
-/// Hook for using a family provider with suspense support
-pub fn use_family_provider_suspense<P, Param>(
-    provider: P,
-    param: Param,
-) -> Result<P::Output, P::Error>
-where
-    P: FamilyProvider<Param>,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
-{
-    let state = use_family_provider(provider, param);
-
-    let current_state = state.read();
-    match &*current_state {
-        AsyncState::Loading => {
-            // For now, we'll handle suspense differently
-            // In a real implementation, this would need proper suspense support
-            panic!("Component should be wrapped in SuspenseBoundary - data is still loading")
-        }
-        AsyncState::Success(data) => Ok(data.clone()),
-        AsyncState::Error(error) => Err(error.clone()),
-    }
-}
-
 /// Hook to access the provider cache for manual cache management  
 pub fn use_provider_cache() -> ProviderCache {
-    use_context_provider(ProviderCache::new)
+    use_context::<ProviderCache>()
 }
 
-/// Hook to invalidate a specific provider cache entry
-pub fn use_invalidate_provider<P: FutureProvider>(provider: P) {
+/// Hook to invalidate a specific future provider cache entry
+pub fn use_invalidate_provider<P: FutureProvider>(provider: P) -> impl Fn() + Clone {
     let cache = use_provider_cache();
-    cache.invalidate(&provider.id());
+    let refresh_registry = use_context::<RefreshRegistry>();
+    let cache_key = provider.id();
+
+    move || {
+        cache.invalidate(&cache_key);
+        refresh_registry.trigger_refresh(&cache_key);
+    }
 }
 
 /// Hook to invalidate a specific family provider cache entry
-pub fn use_invalidate_family_provider<P, Param>(provider: P, param: Param)
+pub fn use_invalidate_family_provider<P, Param>(provider: P, param: Param) -> impl Fn() + Clone
 where
     P: FamilyProvider<Param>,
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
     let cache = use_provider_cache();
-    cache.invalidate(&provider.id(&param));
+    let refresh_registry = use_context::<RefreshRegistry>();
+    let cache_key = provider.id(&param);
+
+    move || {
+        cache.invalidate(&cache_key);
+        refresh_registry.trigger_refresh(&cache_key);
+    }
 }
 
 /// Hook to clear the entire provider cache
-pub fn use_clear_provider_cache() {
+pub fn use_clear_provider_cache() -> impl Fn() + Clone {
     let cache = use_provider_cache();
-    cache.clear();
+    let refresh_registry = use_context::<RefreshRegistry>();
+
+    move || {
+        cache.clear();
+        refresh_registry.clear_all();
+    }
+}
+
+/// Invalidate a specific provider cache entry
+pub fn invalidate_provider<P: FutureProvider>(cache: &ProviderCache, provider: P) {
+    cache.invalidate(&provider.id());
+}
+
+/// Invalidate a specific family provider cache entry
+pub fn invalidate_family_provider<P, Param>(cache: &ProviderCache, provider: P, param: &Param)
+where
+    P: FamilyProvider<Param>,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    cache.invalidate(&provider.id(param));
 }
