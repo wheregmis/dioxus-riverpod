@@ -149,6 +149,71 @@ async fn fetch_current_time() -> Result<String, String> {
     Ok(format!("Current time: {}", format_timestamp()))
 }
 
+// Provider with cache expiration - expires after 3 seconds
+#[provider(cache_expiration_secs = 3)]
+async fn fetch_expiring_data() -> Result<String, String> {
+    println!("⏰ [CACHE EXPIRATION] Fetching data with 3-second cache expiration");
+    sleep(Duration::from_millis(500)).await;
+    Ok(format!(
+        "Expiring Data: {} | Cached at: {}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        format_timestamp()
+    ))
+}
+
+// Provider with cache expiration in milliseconds - expires after 2 seconds
+#[provider(cache_expiration_millis = 2000)]
+async fn fetch_short_expiring_data() -> Result<String, String> {
+    println!("⏰ [CACHE EXPIRATION] Fetching data with 2-second cache expiration (2000ms)");
+    sleep(Duration::from_millis(300)).await;
+    Ok(format!(
+        "Short Expiring Data: {} | Cached at: {}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        format_timestamp()
+    ))
+}
+
+// Family provider with cache expiration - expires after 4 seconds
+#[provider(cache_expiration_secs = 4)]
+async fn fetch_expiring_user_data(user_id: u32) -> Result<String, String> {
+    println!(
+        "⏰ [CACHE EXPIRATION FAMILY] Fetching user data for user_id={} with 4-second cache expiration",
+        user_id
+    );
+    sleep(Duration::from_millis(400)).await;
+
+    let names = ["Alex", "Blake", "Casey", "Drew", "Ellis", "Finley"];
+    let name = names[user_id as usize % names.len()];
+
+    Ok(format!(
+        "Expiring User {}: {} | Cached at: {}",
+        user_id,
+        name,
+        format_timestamp()
+    ))
+}
+
+// Provider with both interval and cache expiration - demonstrates feature interaction
+#[provider(interval_secs = 8, cache_expiration_secs = 5)]
+async fn fetch_interval_with_expiration() -> Result<String, String> {
+    println!("🔄⏰ [INTERVAL + EXPIRATION] Fetching data with 8s interval and 5s cache expiration");
+    sleep(Duration::from_millis(600)).await;
+    Ok(format!(
+        "Interval + Expiration Data: {} | Fetched at: {}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        format_timestamp()
+    ))
+}
+
 // Real-time clock provider that updates every second
 #[provider(interval_secs = 1)]
 async fn live_clock() -> Result<String, String> {
@@ -488,58 +553,82 @@ fn app() -> Element {
                 }
             }
 
-            // Global Cache Management
-            section { style: "margin: 30px 0; padding: 20px; background: #f8d7da; border-radius: 8px;",
-                h2 { "Global Cache Management" }
-                p { "Clear all cached data across all providers:" }
-                button {
-                    onclick: move |_| {
-                        println!("🧹 [DEBUG] Clearing entire provider cache");
-                        clear_cache();
+            // Cache Expiration Testing Section
+            h3 { style: "color: #dc3545; margin: 20px 0 10px 0;", "⏰ Cache Expiration Testing" }
+
+            // Provider with 3-second cache expiration
+            div { style: "padding: 15px; border: 1px solid #dc3545; border-radius: 5px; margin: 10px 0;",
+                h4 { "⏰ Data with 3-Second Cache Expiration" }
+                match &*use_future_provider(fetch_expiring_data).read() {
+                    AsyncState::Loading => rsx! {
+                        p { "⏳ Loading expiring data..." }
                     },
-                    style: "padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;",
-                    "🧹 Clear All Cache"
+                    AsyncState::Success(data) => rsx! {
+                        p { style: "font-weight: bold; color: #dc3545;", "✅ {data}" }
+                    },
+                    AsyncState::Error(e) => rsx! {
+                        p { "❌ Error: {e}" }
+                    },
                 }
             }
 
-            // Instructions
-            section { style: "margin: 30px 0; padding: 20px; background: #d1ecf1; border-radius: 8px; font-size: 14px;",
-                h3 { "Expected Behavior & Testing Guide:" }
-                ul {
-                    li {
-                        "🔄 **Cache Hit/Miss**: First load triggers provider execution, subsequent loads use cache"
-                    }
-                    li {
-                        "🔀 **Component Toggling**: Hiding/showing components should hit cache, not re-execute providers"
-                    }
-                    li {
-                        "👥 **Family Providers**: Different parameter combinations create separate cache entries"
-                    }
-                    li {
-                        "🎯 **Selective Invalidation**: Each invalidate button only affects its specific provider/parameters"
-                    }
-                    li {
-                        "🧹 **Global Clear**: Clears all cached data, forcing all providers to re-execute"
-                    }
-                    li {
-                        "📋 **Console Logs**: Check browser console to see provider execution and cache behavior"
-                    }
-                    li {
-                        "🔄 **Interval Providers**: Some providers auto-refresh in the background at specified intervals"
-                    }
-                    li {
-                        "⏱️ **Background Updates**: Watch the live data sections update automatically without user interaction"
-                    }
+            // Provider with 2-second cache expiration (using millis)
+            div { style: "padding: 15px; border: 1px solid #e83e8c; border-radius: 5px; margin: 10px 0;",
+                h4 { "⏰ Data with 2-Second Cache Expiration (2000ms)" }
+                match &*use_future_provider(fetch_short_expiring_data).read() {
+                    AsyncState::Loading => rsx! {
+                        p { "⏳ Loading short expiring data..." }
+                    },
+                    AsyncState::Success(data) => rsx! {
+                        p { style: "font-weight: bold; color: #e83e8c;", "✅ {data}" }
+                    },
+                    AsyncState::Error(e) => rsx! {
+                        p { "❌ Error: {e}" }
+                    },
                 }
-                h4 { "Test Scenarios:" }
-                ol {
-                    li { "Load page → observe initial provider executions" }
-                    li { "Toggle components → should see cache hits (no new executions)" }
-                    li { "Change user ID → should trigger new provider calls for that ID" }
-                    li { "Toggle include details → should create separate cache entries" }
-                    li { "Use selective invalidation → only specific providers re-execute" }
-                    li { "Use global clear → all visible data reloads" }
+            }
+
+            // Family provider with cache expiration
+            div { style: "padding: 15px; border: 1px solid #fd7e14; border-radius: 5px; margin: 10px 0;",
+                h4 { "⏰ User Data with 4-Second Cache Expiration (User {user_id})" }
+                match &*use_family_provider(fetch_expiring_user_data, *user_id.read()).read() {
+                    AsyncState::Loading => rsx! {
+                        p { "⏳ Loading expiring user data..." }
+                    },
+                    AsyncState::Success(data) => rsx! {
+                        p { style: "font-weight: bold; color: #fd7e14;", "✅ {data}" }
+                    },
+                    AsyncState::Error(e) => rsx! {
+                        p { "❌ Error: {e}" }
+                    },
                 }
+            }
+
+            // Provider with both interval and cache expiration
+            div { style: "padding: 15px; border: 1px solid #6610f2; border-radius: 5px; margin: 10px 0;",
+                h4 { "🔄⏰ Data with 8s Interval + 5s Cache Expiration" }
+                match &*use_future_provider(fetch_interval_with_expiration).read() {
+                    AsyncState::Loading => rsx! {
+                        p { "⏳ Loading interval + expiration data..." }
+                    },
+                    AsyncState::Success(data) => rsx! {
+                        p { style: "font-weight: bold; color: #6610f2;", "✅ {data}" }
+                    },
+                    AsyncState::Error(e) => rsx! {
+                        p { "❌ Error: {e}" }
+                    },
+                }
+            }
+
+            div { style: "margin: 15px 0; padding: 10px; background: #f8d7da; border-radius: 4px; font-size: 14px; border: 1px solid #dc3545;",
+                p { "⏰ **Cache Expiration**: These providers demonstrate cache expiration functionality. After the specified time, cached data automatically expires and fresh data is fetched on the next access." }
+                p { style: "margin-top: 5px;", "🕐 **Watch the behavior**: Data will remain cached until expiration time, then automatically refresh when accessed again. Notice the provider execution logs in the console!" }
+                p { style: "margin-top: 5px;", "🔄 **Interval + Expiration**: The last provider shows how both features work together - interval provides background updates while expiration ensures stale data doesn't persist." }
+            }
+
+            div { style: "margin: 15px 0; padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 14px;",
+                p { "💡 **How it works**: These providers run automatically in the background using tokio intervals. You should see the times updating automatically, and console logs every few seconds as they refresh!" }
+                p { style: "margin-top: 5px;", "🎯 **Watch the timestamps**: Each provider shows when it was last updated. The clock updates every second, metrics every 2 seconds, server status every 5 seconds, and user activity every 3 seconds." }
             }
         }
     }

@@ -11,6 +11,8 @@ use syn::{
 struct ProviderArgs {
     interval_secs: Option<u64>,
     interval_millis: Option<u64>,
+    cache_expiration_secs: Option<u64>,
+    cache_expiration_millis: Option<u64>,
 }
 
 impl Parse for ProviderArgs {
@@ -29,6 +31,14 @@ impl Parse for ProviderArgs {
                 "interval_millis" => {
                     let lit: LitInt = input.parse()?;
                     args.interval_millis = Some(lit.base10_parse()?);
+                }
+                "cache_expiration_secs" => {
+                    let lit: LitInt = input.parse()?;
+                    args.cache_expiration_secs = Some(lit.base10_parse()?);
+                }
+                "cache_expiration_millis" => {
+                    let lit: LitInt = input.parse()?;
+                    args.cache_expiration_millis = Some(lit.base10_parse()?);
                 }
                 _ => return Err(syn::Error::new_spanned(ident, "Unknown argument")),
             }
@@ -50,6 +60,13 @@ impl Parse for ProviderArgs {
 /// Supports interval configuration:
 /// - #[provider(interval_secs = 5)] - refresh every 5 seconds
 /// - #[provider(interval_millis = 1000)] - refresh every 1000 milliseconds
+///
+/// Supports cache expiration:
+/// - #[provider(cache_expiration_secs = 30)] - cache expires after 30 seconds
+/// - #[provider(cache_expiration_millis = 5000)] - cache expires after 5000 milliseconds
+///
+/// Can combine features:
+/// - #[provider(interval_secs = 10, cache_expiration_secs = 60)]
 #[proc_macro_attribute]
 pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
     let provider_args = if args.is_empty() {
@@ -98,6 +115,9 @@ fn generate_future_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
     // Generate interval implementation
     let interval_impl = generate_interval_impl(&provider_args);
 
+    // Generate cache expiration implementation
+    let cache_expiration_impl = generate_cache_expiration_impl(&provider_args);
+
     Ok(quote! {
         #(#fn_attrs)*
         #[derive(Clone, PartialEq)]
@@ -122,6 +142,7 @@ fn generate_future_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
             }
 
             #interval_impl
+            #cache_expiration_impl
         }
 
         // Create a constant instance for easy usage
@@ -151,6 +172,9 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
 
     // Generate interval implementation
     let interval_impl = generate_interval_impl(&provider_args);
+
+    // Generate cache expiration implementation
+    let cache_expiration_impl = generate_cache_expiration_impl(&provider_args);
 
     // Handle single vs multiple parameters
     if params.len() == 1 {
@@ -183,6 +207,7 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
                 }
 
                 #interval_impl
+                #cache_expiration_impl
             }
 
             // Create a constant instance for easy usage
@@ -227,6 +252,7 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
                 }
 
                 #interval_impl
+                #cache_expiration_impl
             }
 
             // Create a constant instance for easy usage
@@ -263,6 +289,40 @@ fn generate_interval_impl(provider_args: &ProviderArgs) -> TokenStream2 {
         }
         (None, None) => {
             // No interval specified, use default (None)
+            quote! {}
+        }
+    }
+}
+
+fn generate_cache_expiration_impl(provider_args: &ProviderArgs) -> TokenStream2 {
+    match (
+        provider_args.cache_expiration_secs,
+        provider_args.cache_expiration_millis,
+    ) {
+        (Some(secs), None) => {
+            quote! {
+                fn cache_expiration(&self) -> Option<::std::time::Duration> {
+                    Some(::std::time::Duration::from_secs(#secs))
+                }
+            }
+        }
+        (None, Some(millis)) => {
+            quote! {
+                fn cache_expiration(&self) -> Option<::std::time::Duration> {
+                    Some(::std::time::Duration::from_millis(#millis))
+                }
+            }
+        }
+        (Some(secs), Some(_millis)) => {
+            // If both are specified, prefer seconds and ignore millis
+            quote! {
+                fn cache_expiration(&self) -> Option<::std::time::Duration> {
+                    Some(::std::time::Duration::from_secs(#secs))
+                }
+            }
+        }
+        (None, None) => {
+            // No cache expiration specified, use default (None)
             quote! {}
         }
     }
