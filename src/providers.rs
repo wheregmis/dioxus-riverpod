@@ -6,17 +6,21 @@ use std::{
     future::Future,
     hash::Hash,
     sync::{Arc, Mutex},
+    time::Duration,
 };
+use tokio::task::JoinHandle;
 
 /// Type alias for reactive context storage
 type ReactiveContextSet = Arc<Mutex<HashSet<ReactiveContext>>>;
 type ReactiveContextRegistry = Arc<Mutex<HashMap<String, ReactiveContextSet>>>;
+type IntervalTaskRegistry = Arc<Mutex<HashMap<String, (Duration, JoinHandle<()>)>>>;
 
 /// Global registry for refresh signals that can trigger provider re-execution
 #[derive(Clone, Default)]
 pub struct RefreshRegistry {
     refresh_counters: Arc<Mutex<HashMap<String, u64>>>,
     reactive_contexts: ReactiveContextRegistry,
+    interval_tasks: IntervalTaskRegistry,
 }
 
 impl RefreshRegistry {
@@ -34,7 +38,9 @@ impl RefreshRegistry {
 
     pub fn subscribe_to_refresh(&self, key: &str, reactive_context: ReactiveContext) {
         if let Ok(mut contexts) = self.reactive_contexts.lock() {
-            let key_contexts = contexts.entry(key.to_string()).or_insert_with(|| Arc::new(Mutex::new(HashSet::new())));
+            let key_contexts = contexts
+                .entry(key.to_string())
+                .or_insert_with(|| Arc::new(Mutex::new(HashSet::new())));
             if let Ok(mut context_set) = key_contexts.lock() {
                 context_set.insert(reactive_context);
             }
@@ -64,9 +70,57 @@ impl RefreshRegistry {
         if let Ok(counters) = self.refresh_counters.lock() {
             let keys: Vec<String> = counters.keys().cloned().collect();
             drop(counters);
-            
+
             for key in keys {
                 self.trigger_refresh(&key);
+            }
+        }
+    }
+
+    /// Start an interval task for automatic provider refresh
+    pub fn start_interval_task<F>(&self, key: &str, interval: Duration, refresh_fn: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        if let Ok(mut tasks) = self.interval_tasks.lock() {
+            // Cancel existing task if it exists and the new interval is shorter
+            let should_create_new_task = match tasks.get(key) {
+                None => true,
+                Some((current_interval, current_task)) => {
+                    if interval < *current_interval {
+                        current_task.abort();
+                        tasks.remove(key);
+                        true
+                    } else {
+                        false // Keep existing shorter interval
+                    }
+                }
+            };
+
+            if should_create_new_task {
+                let task = tokio::spawn(async move {
+                    let mut interval_timer = tokio::time::interval(interval);
+                    interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+                    // Skip the first tick (immediate execution)
+                    interval_timer.tick().await;
+
+                    loop {
+                        interval_timer.tick().await;
+                        refresh_fn();
+                    }
+                });
+
+                tasks.insert(key.to_string(), (interval, task));
+            }
+        }
+    }
+
+    /// Stop an interval task for a specific provider
+    pub fn stop_interval_task(&self, key: &str) {
+        if let Ok(mut tasks) = self.interval_tasks.lock() {
+            if let Some((_, task)) = tasks.remove(key) {
+                task.abort();
             }
         }
     }
@@ -183,6 +237,11 @@ pub trait FutureProvider: Clone + PartialEq + 'static {
 
     /// Get a unique identifier for this provider (used for caching/invalidation)
     fn id(&self) -> String;
+
+    /// Get the interval duration for automatic refresh (None means no interval)
+    fn interval(&self) -> Option<Duration> {
+        None
+    }
 }
 
 /// A trait for defining family providers - parameterized async operations
@@ -198,28 +257,57 @@ where
 
     /// Get a unique identifier for this provider with the parameter
     fn id(&self, param: &Param) -> String;
+
+    /// Get the interval duration for automatic refresh (None means no interval)
+    fn interval(&self) -> Option<Duration> {
+        None
+    }
 }
 
 /// Hook for using a future provider in a Dioxus component
-pub fn use_future_provider<P: FutureProvider>(
+pub fn use_future_provider<P: FutureProvider + Send>(
     provider: P,
 ) -> Signal<AsyncState<P::Output, P::Error>> {
     let mut state = use_signal(|| AsyncState::Loading);
     let cache = use_context::<ProviderCache>();
     let refresh_registry = use_context::<RefreshRegistry>();
-    
+
     // Use memo with reactive dependencies to track changes automatically
     let _execution_memo = use_memo(use_reactive!(|provider| {
         let cache_key = provider.id();
-        
+
         // Subscribe to refresh events for this cache key if we have a reactive context
         if let Some(reactive_context) = ReactiveContext::current() {
             refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
         }
-        
+
         // Read the current refresh count (this makes the memo reactive to changes)
         let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
-        
+
+        // Set up interval task if provider has interval configured
+        if let Some(interval) = provider.interval() {
+            let cache_clone = cache.clone();
+            let provider_clone = provider.clone();
+            let cache_key_clone = cache_key.clone();
+            let refresh_registry_clone = refresh_registry.clone();
+
+            refresh_registry.start_interval_task(&cache_key, interval, move || {
+                // Re-execute the provider and update cache in background
+                let cache_for_task = cache_clone.clone();
+                let provider_for_task = provider_clone.clone();
+                let cache_key_for_task = cache_key_clone.clone();
+                let refresh_registry_for_task = refresh_registry_clone.clone();
+
+                tokio::spawn(async move {
+                    let result = provider_for_task.run().await;
+                    cache_for_task.set(cache_key_for_task.clone(), result);
+
+                    // Trigger refresh to mark reactive contexts as dirty and update UI
+                    refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
+                });
+            });
+        }
+
         // Check cache first
         if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
             match cached_result {
@@ -227,12 +315,12 @@ pub fn use_future_provider<P: FutureProvider>(
                     let _ = spawn(async move {
                         state.set(AsyncState::Success(data));
                     });
-                },
+                }
                 Err(error) => {
                     let _ = spawn(async move {
                         state.set(AsyncState::Error(error));
                     });
-                },
+                }
             }
             return;
         }
@@ -267,25 +355,51 @@ pub fn use_family_provider<P, Param>(
     param: Param,
 ) -> Signal<AsyncState<P::Output, P::Error>>
 where
-    P: FamilyProvider<Param>,
+    P: FamilyProvider<Param> + Send,
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
     let mut state = use_signal(|| AsyncState::Loading);
     let cache = use_context::<ProviderCache>();
     let refresh_registry = use_context::<RefreshRegistry>();
-    
+
     // Use memo with reactive dependencies to track changes automatically
     let _execution_memo = use_memo(use_reactive!(|provider, param| {
         let cache_key = provider.id(&param);
-        
+
         // Subscribe to refresh events for this cache key if we have a reactive context
         if let Some(reactive_context) = ReactiveContext::current() {
             refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
         }
-        
+
         // Read the current refresh count (this makes the memo reactive to changes)
         let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
-        
+
+        // Set up interval task if provider has interval configured
+        if let Some(interval) = provider.interval() {
+            let cache_clone = cache.clone();
+            let provider_clone = provider.clone();
+            let param_clone = param.clone();
+            let cache_key_clone = cache_key.clone();
+            let refresh_registry_clone = refresh_registry.clone();
+
+            refresh_registry.start_interval_task(&cache_key, interval, move || {
+                // Re-execute the provider and update cache in background
+                let cache_for_task = cache_clone.clone();
+                let provider_for_task = provider_clone.clone();
+                let param_for_task = param_clone.clone();
+                let cache_key_for_task = cache_key_clone.clone();
+                let refresh_registry_for_task = refresh_registry_clone.clone();
+
+                tokio::spawn(async move {
+                    let result = provider_for_task.run(param_for_task).await;
+                    cache_for_task.set(cache_key_for_task.clone(), result);
+
+                    // Trigger refresh to mark reactive contexts as dirty and update UI
+                    refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
+                });
+            });
+        }
+
         // Check cache first
         if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
             match cached_result {
@@ -293,12 +407,12 @@ where
                     let _ = spawn(async move {
                         state.set(AsyncState::Success(data));
                     });
-                },
+                }
                 Err(error) => {
                     let _ = spawn(async move {
                         state.set(AsyncState::Error(error));
                     });
-                },
+                }
             }
             return;
         }

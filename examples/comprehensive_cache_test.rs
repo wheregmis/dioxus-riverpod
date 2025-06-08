@@ -3,6 +3,18 @@ use dioxus_riverpod::prelude::*;
 use std::time::Duration;
 use tokio::time::sleep;
 
+// Helper function to format timestamps
+fn format_timestamp() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    let secs = now.as_secs();
+    let hours = (secs / 3600) % 24;
+    let minutes = (secs / 60) % 60;
+    let seconds = secs % 60;
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
 // Future provider for simple cache hit/miss testing
 #[provider]
 async fn fetch_data() -> Result<String, String> {
@@ -28,11 +40,92 @@ async fn fetch_user_data(user_id: u32, include_details: bool) -> Result<String, 
     );
     sleep(Duration::from_millis(500)).await;
 
+    // Generate realistic user data based on user_id
+    let names = [
+        "Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Henry",
+    ];
+    let name = names[user_id as usize % names.len()];
+    let age = 20 + (user_id % 50); // Age between 20-69
+
     if include_details {
-        Ok(format!("User {} with full details", user_id))
+        Ok(format!(
+            "👤 Name: {}, 🎂 Age: {}, 🆔 ID: {}, 📧 Email: {}@example.com, 📍 Location: City {}",
+            name,
+            age,
+            user_id,
+            name.to_lowercase(),
+            user_id % 10 + 1
+        ))
     } else {
-        Ok(format!("User {} basic info", user_id))
+        Ok(format!("👤 {}, 🎂 {} years old", name, age))
     }
+}
+
+// Provider with 5-second interval refresh for live data simulation
+#[provider(interval_secs = 5)]
+async fn live_server_status() -> Result<String, String> {
+    println!("🟢 [INTERVAL PROVIDER] Checking server status (auto-refreshes every 5 seconds)");
+    sleep(Duration::from_millis(200)).await;
+
+    let statuses = ["🟢 Online", "🟡 Maintenance", "🔴 Offline", "🟢 Healthy"];
+    let status = statuses[std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as usize
+        % statuses.len()];
+
+    Ok(format!(
+        "Server Status: {} | Last Check: {}",
+        status,
+        format_timestamp()
+    ))
+}
+
+// Provider with 2-second interval for metrics
+#[provider(interval_secs = 2)]
+async fn live_metrics() -> Result<String, String> {
+    println!("📊 [INTERVAL PROVIDER] Fetching metrics (auto-refreshes every 2 seconds)");
+    sleep(Duration::from_millis(100)).await;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let cpu = 10 + (now % 80);
+    let memory = 30 + (now % 40);
+
+    Ok(format!(
+        "💾 CPU: {}%, 🧠 Memory: {}% | Updated: {}",
+        cpu,
+        memory,
+        format_timestamp()
+    ))
+}
+
+// Family provider with interval for user activity monitoring
+#[provider(interval_secs = 3)]
+async fn user_activity(user_id: u32) -> Result<String, String> {
+    println!(
+        "👥 [INTERVAL FAMILY] Checking activity for user {} (auto-refreshes every 3 seconds)",
+        user_id
+    );
+    sleep(Duration::from_millis(150)).await;
+
+    let activities = ["🔵 Online", "🟡 Away", "⚫ Offline", "🟢 Active"];
+    let activity = activities[(user_id
+        + std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as u32) as usize
+        % activities.len()];
+
+    Ok(format!(
+        "User {} Activity: {} | Last Update: {}",
+        user_id,
+        activity,
+        format_timestamp()
+    ))
 }
 
 // Family provider with single parameter
@@ -40,7 +133,12 @@ async fn fetch_user_data(user_id: u32, include_details: bool) -> Result<String, 
 async fn fetch_user_name(user_id: u32) -> Result<String, String> {
     println!("📡 [PROVIDER] Fetching user name for user_id={}", user_id);
     sleep(Duration::from_millis(300)).await;
-    Ok(format!("User {}", user_id))
+
+    let names = [
+        "Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Henry",
+    ];
+    let name = names[user_id as usize % names.len()];
+    Ok(format!("👤 {}", name))
 }
 
 // Future provider for time testing
@@ -48,13 +146,14 @@ async fn fetch_user_name(user_id: u32) -> Result<String, String> {
 async fn fetch_current_time() -> Result<String, String> {
     println!("📡 [PROVIDER] Fetching current time");
     sleep(Duration::from_millis(200)).await;
-    Ok(format!(
-        "Current time: {}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    ))
+    Ok(format!("Current time: {}", format_timestamp()))
+}
+
+// Real-time clock provider that updates every second
+#[provider(interval_secs = 1)]
+async fn live_clock() -> Result<String, String> {
+    // Don't log for the clock as it would be too verbose
+    Ok(format!("🕐 Current Time: {}", format_timestamp()))
 }
 
 #[component]
@@ -299,6 +398,96 @@ fn app() -> Element {
                 }
             }
 
+            // Interval Providers Testing Section
+            section { style: "margin: 30px 0; padding: 20px; background: #d4edda; border-radius: 8px;",
+                h2 { "🔄 Interval Providers (Auto-Refresh)" }
+                p { "These providers automatically refresh at specified intervals in the background:" }
+
+                // Live Clock (1-second intervals)
+                div { style: "padding: 15px; border: 1px solid #17a2b8; border-radius: 5px; margin: 10px 0; background: #e7f9fc;",
+                    h4 { "🕐 Live Clock (Updates every second)" }
+                    match &*use_future_provider(live_clock).read() {
+                        AsyncState::Loading => rsx! {
+                            p { "⏳ Loading clock..." }
+                        },
+                        AsyncState::Success(time) => rsx! {
+                            p { style: "font-weight: bold; font-size: 1.2em; color: #17a2b8;", "{time}" }
+                        },
+                        AsyncState::Error(e) => rsx! {
+                            p { "❌ Error: {e}" }
+                        },
+                    }
+                }
+
+                // Live Server Status (5-second intervals)
+                div { style: "padding: 15px; border: 1px solid #28a745; border-radius: 5px; margin: 10px 0;",
+                    h4 { "🖥️ Live Server Status (Updates every 5 seconds)" }
+                    match &*use_future_provider(live_server_status).read() {
+                        AsyncState::Loading => rsx! {
+                            p { "⏳ Checking server status..." }
+                        },
+                        AsyncState::Success(status) => rsx! {
+                            p { style: "font-weight: bold;", "✅ {status}" }
+                        },
+                        AsyncState::Error(e) => rsx! {
+                            p { "❌ Error: {e}" }
+                        },
+                    }
+                }
+
+                // Live Metrics (2-second intervals)
+                div { style: "padding: 15px; border: 1px solid #007bff; border-radius: 5px; margin: 10px 0;",
+                    h4 { "📊 Live System Metrics (Updates every 2 seconds)" }
+                    match &*use_future_provider(live_metrics).read() {
+                        AsyncState::Loading => rsx! {
+                            p { "⏳ Loading metrics..." }
+                        },
+                        AsyncState::Success(metrics) => rsx! {
+                            p { style: "font-weight: bold; color: #007bff;", "✅ {metrics}" }
+                        },
+                        AsyncState::Error(e) => rsx! {
+                            p { "❌ Error: {e}" }
+                        },
+                    }
+                }
+
+                // User Activity with Family Provider (3-second intervals)
+                div { style: "padding: 15px; border: 1px solid #6f42c1; border-radius: 5px; margin: 10px 0;",
+                    h4 { "👥 User Activity Monitor (Updates every 3 seconds)" }
+                    div { style: "margin: 10px 0;",
+                        label { style: "margin-right: 10px;",
+                            "Monitor User ID: "
+                            input {
+                                r#type: "number",
+                                value: "{user_id}",
+                                onchange: move |e| {
+                                    if let Ok(id) = e.value().parse::<u32>() {
+                                        user_id.set(id);
+                                    }
+                                },
+                                style: "padding: 4px; margin-left: 5px; width: 80px;",
+                            }
+                        }
+                    }
+                    match &*use_family_provider(user_activity, *user_id.read()).read() {
+                        AsyncState::Loading => rsx! {
+                            p { "⏳ Checking user activity..." }
+                        },
+                        AsyncState::Success(activity) => rsx! {
+                            p { style: "font-weight: bold; color: #6f42c1;", "✅ {activity}" }
+                        },
+                        AsyncState::Error(e) => rsx! {
+                            p { "❌ Error: {e}" }
+                        },
+                    }
+                }
+
+                div { style: "margin: 15px 0; padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 14px;",
+                    p { "💡 **How it works**: These providers run automatically in the background using tokio intervals. You should see the times updating automatically, and console logs every few seconds as they refresh!" }
+                    p { style: "margin-top: 5px;", "🎯 **Watch the timestamps**: Each provider shows when it was last updated. The clock updates every second, metrics every 2 seconds, server status every 5 seconds, and user activity every 3 seconds." }
+                }
+            }
+
             // Global Cache Management
             section { style: "margin: 30px 0; padding: 20px; background: #f8d7da; border-radius: 8px;",
                 h2 { "Global Cache Management" }
@@ -334,6 +523,12 @@ fn app() -> Element {
                     }
                     li {
                         "📋 **Console Logs**: Check browser console to see provider execution and cache behavior"
+                    }
+                    li {
+                        "🔄 **Interval Providers**: Some providers auto-refresh in the background at specified intervals"
+                    }
+                    li {
+                        "⏱️ **Background Updates**: Watch the live data sections update automatically without user interaction"
                     }
                 }
                 h4 { "Test Scenarios:" }

@@ -1,14 +1,66 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{FnArg, ItemFn, Pat, PatType, Result, ReturnType, Type, parse_macro_input};
+use syn::{
+    FnArg, ItemFn, LitInt, Pat, PatType, Result, ReturnType, Token, Type, parse::Parse,
+    parse::ParseStream, parse_macro_input,
+};
+
+/// Attribute arguments for the provider macro
+#[derive(Default)]
+struct ProviderArgs {
+    interval_secs: Option<u64>,
+    interval_millis: Option<u64>,
+}
+
+impl Parse for ProviderArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut args = ProviderArgs::default();
+
+        while !input.is_empty() {
+            let ident: syn::Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+
+            match ident.to_string().as_str() {
+                "interval_secs" => {
+                    let lit: LitInt = input.parse()?;
+                    args.interval_secs = Some(lit.base10_parse()?);
+                }
+                "interval_millis" => {
+                    let lit: LitInt = input.parse()?;
+                    args.interval_millis = Some(lit.base10_parse()?);
+                }
+                _ => return Err(syn::Error::new_spanned(ident, "Unknown argument")),
+            }
+
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(args)
+    }
+}
 
 /// Unified attribute macro for creating providers
 /// Automatically detects provider type based on function parameters:
 /// - No parameters → Future Provider  
 /// - Has parameters → Family Provider
+///
+/// Supports interval configuration:
+/// - #[provider(interval_secs = 5)] - refresh every 5 seconds
+/// - #[provider(interval_millis = 1000)] - refresh every 1000 milliseconds
 #[proc_macro_attribute]
-pub fn provider(_args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
+    let provider_args = if args.is_empty() {
+        ProviderArgs::default()
+    } else {
+        match syn::parse(args) {
+            Ok(args) => args,
+            Err(err) => return err.to_compile_error().into(),
+        }
+    };
+
     let input_fn = parse_macro_input!(input as ItemFn);
 
     // Check if the function has parameters
@@ -16,10 +68,10 @@ pub fn provider(_args: TokenStream, input: TokenStream) -> TokenStream {
 
     let result = if has_params {
         // Has parameters → Family Provider
-        generate_family_provider(input_fn)
+        generate_family_provider(input_fn, provider_args)
     } else {
         // No parameters → Future Provider
-        generate_future_provider(input_fn)
+        generate_future_provider(input_fn, provider_args)
     };
 
     match result {
@@ -28,7 +80,7 @@ pub fn provider(_args: TokenStream, input: TokenStream) -> TokenStream {
     }
 }
 
-fn generate_future_provider(input_fn: ItemFn) -> Result<TokenStream2> {
+fn generate_future_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<TokenStream2> {
     let fn_name = &input_fn.sig.ident;
     let fn_vis = &input_fn.vis;
     let fn_attrs = &input_fn.attrs;
@@ -42,6 +94,9 @@ fn generate_future_provider(input_fn: ItemFn) -> Result<TokenStream2> {
         &format!("{}Provider", to_pascal_case(&fn_name.to_string())),
         fn_name.span(),
     );
+
+    // Generate interval implementation
+    let interval_impl = generate_interval_impl(&provider_args);
 
     Ok(quote! {
         #(#fn_attrs)*
@@ -65,6 +120,8 @@ fn generate_future_provider(input_fn: ItemFn) -> Result<TokenStream2> {
             fn id(&self) -> String {
                 stringify!(#struct_name).to_string()
             }
+
+            #interval_impl
         }
 
         // Create a constant instance for easy usage
@@ -74,7 +131,7 @@ fn generate_future_provider(input_fn: ItemFn) -> Result<TokenStream2> {
     })
 }
 
-fn generate_family_provider(input_fn: ItemFn) -> Result<TokenStream2> {
+fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<TokenStream2> {
     let fn_name = &input_fn.sig.ident;
     let fn_vis = &input_fn.vis;
     let fn_attrs = &input_fn.attrs;
@@ -91,6 +148,9 @@ fn generate_family_provider(input_fn: ItemFn) -> Result<TokenStream2> {
         &format!("{}Provider", to_pascal_case(&fn_name.to_string())),
         fn_name.span(),
     );
+
+    // Generate interval implementation
+    let interval_impl = generate_interval_impl(&provider_args);
 
     // Handle single vs multiple parameters
     if params.len() == 1 {
@@ -121,6 +181,8 @@ fn generate_family_provider(input_fn: ItemFn) -> Result<TokenStream2> {
                 fn id(&self, param: &#param_type) -> String {
                     format!("{}({:?})", stringify!(#struct_name), param)
                 }
+
+                #interval_impl
             }
 
             // Create a constant instance for easy usage
@@ -163,6 +225,8 @@ fn generate_family_provider(input_fn: ItemFn) -> Result<TokenStream2> {
                 fn id(&self, params: &#tuple_type) -> String {
                     format!("{}({:?})", stringify!(#struct_name), params)
                 }
+
+                #interval_impl
             }
 
             // Create a constant instance for easy usage
@@ -170,6 +234,37 @@ fn generate_family_provider(input_fn: ItemFn) -> Result<TokenStream2> {
             #[allow(non_upper_case_globals)]
             #fn_vis const #fn_name: #struct_name = #struct_name;
         })
+    }
+}
+
+fn generate_interval_impl(provider_args: &ProviderArgs) -> TokenStream2 {
+    match (provider_args.interval_secs, provider_args.interval_millis) {
+        (Some(secs), None) => {
+            quote! {
+                fn interval(&self) -> Option<::std::time::Duration> {
+                    Some(::std::time::Duration::from_secs(#secs))
+                }
+            }
+        }
+        (None, Some(millis)) => {
+            quote! {
+                fn interval(&self) -> Option<::std::time::Duration> {
+                    Some(::std::time::Duration::from_millis(#millis))
+                }
+            }
+        }
+        (Some(secs), Some(_millis)) => {
+            // If both are specified, prefer seconds and ignore millis
+            quote! {
+                fn interval(&self) -> Option<::std::time::Duration> {
+                    Some(::std::time::Duration::from_secs(#secs))
+                }
+            }
+        }
+        (None, None) => {
+            // No interval specified, use default (None)
+            quote! {}
+        }
     }
 }
 
