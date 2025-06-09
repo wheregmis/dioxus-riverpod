@@ -7,9 +7,9 @@
 ### Core Functionality
 - **✅ Basic Provider System**: Async provider support with automatic caching
 - **✅ Family Providers**: Parameterized providers for dynamic data fetching  
-- **✅ Cache Expiration**: TTL-based cache invalidation (`cache_expiration_secs/millis`)
-- **✅ Interval Refresh**: Proactive background updates (`interval_secs/millis`)
-- **✅ Stale-While-Revalidate**: Instant responses with background revalidation (`stale_time_secs/millis`)
+- **✅ Cache Expiration**: TTL-based cache invalidation (`cache_expiration`)
+- **✅ Interval Refresh**: Proactive background updates (`interval`)
+- **✅ Stale-While-Revalidate**: Instant responses with background revalidation (`stale_time`)
 - **✅ Manual Refresh**: Ability to manually refresh provider data via refresh registry
 - **✅ Macro-based API**: Clean, declarative provider definition using `#[provider]` macro
 - **✅ Error Handling**: Basic error propagation in async providers
@@ -17,23 +17,23 @@
 ### Current API Examples
 ```rust
 // Stale-while-revalidate - serves stale data instantly, background refresh
-#[provider(stale_time_secs = 5)]
+#[provider(stale_time = "5s")]
 async fn user_data_swr(id: u32) -> Result<User, Error> { }
 
 // Cache expiration - data expires and requires full reload
-#[provider(cache_expiration_secs = 10)]
+#[provider(cache_expiration = "10s")]
 async fn user_data(id: u32) -> Result<User, Error> { }
 
 // Interval refresh - proactive background updates every 5 seconds
-#[provider(interval_secs = 5)]
+#[provider(interval = "5s")]
 async fn live_metrics() -> Result<Metrics, Error> { }
 
 // Combined - background updates every 30s, cache expires after 60s
-#[provider(interval_secs = 30, cache_expiration_secs = 60)]
+#[provider(interval = "30s", cache_expiration = "1min")]
 async fn server_status() -> Result<Status, Error> { }
 
 // Family providers with SWR
-#[provider(stale_time_secs = 5)]
+#[provider(stale_time = "5s")]
 async fn user_posts(user_id: u32) -> Result<Vec<Post>, Error> { }
 ```
 

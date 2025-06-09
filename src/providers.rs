@@ -560,7 +560,7 @@ where
             }
 
             // Check cache first - serve any available data (fresh or stale)
-            let cache_expiration = provider.cache_expiration();
+            let _cache_expiration = provider.cache_expiration();
             if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
                 match cached_result {
                     Ok(data) => {

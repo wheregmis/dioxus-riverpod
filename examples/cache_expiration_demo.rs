@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 // Provider with 2-second cache expiration for testing
-#[provider(cache_expiration_secs = 2)]
+#[provider(cache_expiration = "2s")]
 async fn fetch_expiring_data() -> Result<String, String> {
     println!("⏰ [EXECUTING] Fetching data - cache expires in 2 seconds");
     sleep(Duration::from_millis(200)).await;
@@ -18,7 +18,7 @@ async fn fetch_expiring_data() -> Result<String, String> {
 }
 
 // Family provider with 3-second cache expiration
-#[provider(cache_expiration_secs = 3)]
+#[provider(cache_expiration = "3s")]
 async fn fetch_user_data(user_id: u32) -> Result<String, String> {
     println!(
         "⏰ [EXECUTING] Fetching user {} data - cache expires in 3 seconds",

@@ -62,7 +62,7 @@ async fn fetch_user_data(user_id: u32, include_details: bool) -> Result<String, 
 }
 
 // Provider with 5-second interval refresh for live data simulation
-#[provider(interval_secs = 5)]
+#[provider(interval = "5s")]
 async fn live_server_status() -> Result<String, String> {
     println!("🟢 [INTERVAL PROVIDER] Checking server status (auto-refreshes every 5 seconds)");
     sleep(Duration::from_millis(200)).await;
@@ -82,7 +82,7 @@ async fn live_server_status() -> Result<String, String> {
 }
 
 // Provider with 2-second interval for metrics
-#[provider(interval_secs = 2)]
+#[provider(interval = "2s")]
 async fn live_metrics() -> Result<String, String> {
     println!("📊 [INTERVAL PROVIDER] Fetching metrics (auto-refreshes every 2 seconds)");
     sleep(Duration::from_millis(100)).await;
@@ -104,7 +104,7 @@ async fn live_metrics() -> Result<String, String> {
 }
 
 // Family provider with interval for user activity monitoring
-#[provider(interval_secs = 3)]
+#[provider(interval = "3s")]
 async fn user_activity(user_id: u32) -> Result<String, String> {
     println!(
         "👥 [INTERVAL FAMILY] Checking activity for user {} (auto-refreshes every 3 seconds)",
@@ -150,7 +150,7 @@ async fn fetch_current_time() -> Result<String, String> {
 }
 
 // Provider with cache expiration - expires after 3 seconds
-#[provider(cache_expiration_secs = 3)]
+#[provider(cache_expiration = "3s")]
 async fn fetch_expiring_data() -> Result<String, String> {
     println!("⏰ [CACHE EXPIRATION] Fetching data with 3-second cache expiration");
     sleep(Duration::from_millis(500)).await;
@@ -165,7 +165,7 @@ async fn fetch_expiring_data() -> Result<String, String> {
 }
 
 // Provider with cache expiration in milliseconds - expires after 2 seconds
-#[provider(cache_expiration_millis = 2000)]
+#[provider(cache_expiration = "2s")]
 async fn fetch_short_expiring_data() -> Result<String, String> {
     println!("⏰ [CACHE EXPIRATION] Fetching data with 2-second cache expiration (2000ms)");
     sleep(Duration::from_millis(300)).await;
@@ -180,7 +180,7 @@ async fn fetch_short_expiring_data() -> Result<String, String> {
 }
 
 // Family provider with cache expiration - expires after 4 seconds
-#[provider(cache_expiration_secs = 4)]
+#[provider(cache_expiration = "4s")]
 async fn fetch_expiring_user_data(user_id: u32) -> Result<String, String> {
     println!(
         "⏰ [CACHE EXPIRATION FAMILY] Fetching user data for user_id={} with 4-second cache expiration",
@@ -200,7 +200,7 @@ async fn fetch_expiring_user_data(user_id: u32) -> Result<String, String> {
 }
 
 // Provider with both interval and cache expiration - demonstrates feature interaction
-#[provider(interval_secs = 8, cache_expiration_secs = 5)]
+#[provider(interval = "8s", cache_expiration = "5s")]
 async fn fetch_interval_with_expiration() -> Result<String, String> {
     println!("🔄⏰ [INTERVAL + EXPIRATION] Fetching data with 8s interval and 5s cache expiration");
     sleep(Duration::from_millis(600)).await;
@@ -215,7 +215,7 @@ async fn fetch_interval_with_expiration() -> Result<String, String> {
 }
 
 // Real-time clock provider that updates every second
-#[provider(interval_secs = 1)]
+#[provider(interval = "1s")]
 async fn live_clock() -> Result<String, String> {
     // Don't log for the clock as it would be too verbose
     Ok(format!("🕐 Current Time: {}", format_timestamp()))
@@ -548,8 +548,12 @@ fn app() -> Element {
                 }
 
                 div { style: "margin: 15px 0; padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 14px;",
-                    p { "💡 **How it works**: These providers run automatically in the background using tokio intervals. You should see the times updating automatically, and console logs every few seconds as they refresh!" }
-                    p { style: "margin-top: 5px;", "🎯 **Watch the timestamps**: Each provider shows when it was last updated. The clock updates every second, metrics every 2 seconds, server status every 5 seconds, and user activity every 3 seconds." }
+                    p {
+                        "💡 **How it works**: These providers run automatically in the background using tokio intervals. You should see the times updating automatically, and console logs every few seconds as they refresh!"
+                    }
+                    p { style: "margin-top: 5px;",
+                        "🎯 **Watch the timestamps**: Each provider shows when it was last updated. The clock updates every second, metrics every 2 seconds, server status every 5 seconds, and user activity every 3 seconds."
+                    }
                 }
             }
 
@@ -621,14 +625,24 @@ fn app() -> Element {
             }
 
             div { style: "margin: 15px 0; padding: 10px; background: #f8d7da; border-radius: 4px; font-size: 14px; border: 1px solid #dc3545;",
-                p { "⏰ **Cache Expiration**: These providers demonstrate cache expiration functionality. After the specified time, cached data automatically expires and fresh data is fetched on the next access." }
-                p { style: "margin-top: 5px;", "🕐 **Watch the behavior**: Data will remain cached until expiration time, then automatically refresh when accessed again. Notice the provider execution logs in the console!" }
-                p { style: "margin-top: 5px;", "🔄 **Interval + Expiration**: The last provider shows how both features work together - interval provides background updates while expiration ensures stale data doesn't persist." }
+                p {
+                    "⏰ **Cache Expiration**: These providers demonstrate cache expiration functionality. After the specified time, cached data automatically expires and fresh data is fetched on the next access."
+                }
+                p { style: "margin-top: 5px;",
+                    "🕐 **Watch the behavior**: Data will remain cached until expiration time, then automatically refresh when accessed again. Notice the provider execution logs in the console!"
+                }
+                p { style: "margin-top: 5px;",
+                    "🔄 **Interval + Expiration**: The last provider shows how both features work together - interval provides background updates while expiration ensures stale data doesn't persist."
+                }
             }
 
             div { style: "margin: 15px 0; padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 14px;",
-                p { "💡 **How it works**: These providers run automatically in the background using tokio intervals. You should see the times updating automatically, and console logs every few seconds as they refresh!" }
-                p { style: "margin-top: 5px;", "🎯 **Watch the timestamps**: Each provider shows when it was last updated. The clock updates every second, metrics every 2 seconds, server status every 5 seconds, and user activity every 3 seconds." }
+                p {
+                    "💡 **How it works**: These providers run automatically in the background using tokio intervals. You should see the times updating automatically, and console logs every few seconds as they refresh!"
+                }
+                p { style: "margin-top: 5px;",
+                    "🎯 **Watch the timestamps**: Each provider shows when it was last updated. The clock updates every second, metrics every 2 seconds, server status every 5 seconds, and user activity every 3 seconds."
+                }
             }
         }
     }

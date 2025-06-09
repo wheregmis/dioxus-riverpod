@@ -25,7 +25,7 @@ struct ApiError(String);
 // PATTERN 1: Pure SWR - Never shows loading states after first load
 // ============================================================================
 
-#[provider(stale_time_secs = 5)]
+#[provider(stale_time = "5s")]
 async fn fetch_user_swr_only() -> Result<UserData, ApiError> {
     let call_number = API_CALL_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
     println!("🌐 [SWR] API call #{} starting...", call_number);
@@ -57,7 +57,7 @@ async fn fetch_user_swr_only() -> Result<UserData, ApiError> {
 // PATTERN 2: Traditional Cache Expiration - Shows loading states when expired
 // ============================================================================
 
-#[provider(cache_expiration_secs = 8)]
+#[provider(cache_expiration = "8s")]
 async fn fetch_user_traditional() -> Result<UserData, ApiError> {
     let call_number = API_CALL_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
     println!("🗄️ [TRADITIONAL] API call #{} starting...", call_number);

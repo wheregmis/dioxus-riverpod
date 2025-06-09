@@ -3,20 +3,18 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
+use std::time::Duration;
 use syn::{
-    FnArg, ItemFn, LitInt, Pat, PatType, Result, ReturnType, Token, Type, parse::Parse,
+    FnArg, ItemFn, LitStr, Pat, PatType, Result, ReturnType, Token, Type, parse::Parse,
     parse::ParseStream, parse_macro_input,
 };
 
 /// Attribute arguments for the provider macro
 #[derive(Default)]
 struct ProviderArgs {
-    interval_secs: Option<u64>,
-    interval_millis: Option<u64>,
-    cache_expiration_secs: Option<u64>,
-    cache_expiration_millis: Option<u64>,
-    stale_time_secs: Option<u64>,
-    stale_time_millis: Option<u64>,
+    interval: Option<Duration>,
+    cache_expiration: Option<Duration>,
+    stale_time: Option<Duration>,
 }
 
 impl Parse for ProviderArgs {
@@ -28,29 +26,60 @@ impl Parse for ProviderArgs {
             input.parse::<Token![=]>()?;
 
             match ident.to_string().as_str() {
+                "interval" => {
+                    let lit: LitStr = input.parse()?;
+                    let duration_str = lit.value();
+                    let duration = humantime::parse_duration(&duration_str).map_err(|e| {
+                        syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
+                    })?;
+                    args.interval = Some(duration);
+                }
+                "cache_expiration" => {
+                    let lit: LitStr = input.parse()?;
+                    let duration_str = lit.value();
+                    let duration = humantime::parse_duration(&duration_str).map_err(|e| {
+                        syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
+                    })?;
+                    args.cache_expiration = Some(duration);
+                }
+                "stale_time" => {
+                    let lit: LitStr = input.parse()?;
+                    let duration_str = lit.value();
+                    let duration = humantime::parse_duration(&duration_str).map_err(|e| {
+                        syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
+                    })?;
+                    args.stale_time = Some(duration);
+                }
+                // Legacy support for old format (keep for backward compatibility)
                 "interval_secs" => {
-                    let lit: LitInt = input.parse()?;
-                    args.interval_secs = Some(lit.base10_parse()?);
+                    let lit: syn::LitInt = input.parse()?;
+                    let secs: u64 = lit.base10_parse()?;
+                    args.interval = Some(Duration::from_secs(secs));
                 }
                 "interval_millis" => {
-                    let lit: LitInt = input.parse()?;
-                    args.interval_millis = Some(lit.base10_parse()?);
+                    let lit: syn::LitInt = input.parse()?;
+                    let millis: u64 = lit.base10_parse()?;
+                    args.interval = Some(Duration::from_millis(millis));
                 }
                 "cache_expiration_secs" => {
-                    let lit: LitInt = input.parse()?;
-                    args.cache_expiration_secs = Some(lit.base10_parse()?);
+                    let lit: syn::LitInt = input.parse()?;
+                    let secs: u64 = lit.base10_parse()?;
+                    args.cache_expiration = Some(Duration::from_secs(secs));
                 }
                 "cache_expiration_millis" => {
-                    let lit: LitInt = input.parse()?;
-                    args.cache_expiration_millis = Some(lit.base10_parse()?);
+                    let lit: syn::LitInt = input.parse()?;
+                    let millis: u64 = lit.base10_parse()?;
+                    args.cache_expiration = Some(Duration::from_millis(millis));
                 }
                 "stale_time_secs" => {
-                    let lit: LitInt = input.parse()?;
-                    args.stale_time_secs = Some(lit.base10_parse()?);
+                    let lit: syn::LitInt = input.parse()?;
+                    let secs: u64 = lit.base10_parse()?;
+                    args.stale_time = Some(Duration::from_secs(secs));
                 }
                 "stale_time_millis" => {
-                    let lit: LitInt = input.parse()?;
-                    args.stale_time_millis = Some(lit.base10_parse()?);
+                    let lit: syn::LitInt = input.parse()?;
+                    let millis: u64 = lit.base10_parse()?;
+                    args.stale_time = Some(Duration::from_millis(millis));
                 }
                 _ => return Err(syn::Error::new_spanned(ident, "Unknown argument")),
             }
@@ -69,21 +98,29 @@ impl Parse for ProviderArgs {
 /// - No parameters → Future Provider  
 /// - Has parameters → Family Provider
 ///
-/// Supports interval configuration:
-/// - #[provider(interval_secs = 5)] - refresh every 5 seconds
-/// - #[provider(interval_millis = 1000)] - refresh every 1000 milliseconds
+/// Supports humantime duration syntax for all timing parameters:
+/// - #[provider(interval = "5s")] - refresh every 5 seconds
+/// - #[provider(interval = "1min")] - refresh every minute  
+/// - #[provider(interval = "30sec")] - refresh every 30 seconds
 ///
-/// Supports cache expiration:
-/// - #[provider(cache_expiration_secs = 30)] - cache expires after 30 seconds
-/// - #[provider(cache_expiration_millis = 5000)] - cache expires after 5000 milliseconds
+/// Cache expiration with humantime:
+/// - #[provider(cache_expiration = "30s")] - cache expires after 30 seconds
+/// - #[provider(cache_expiration = "5min")] - cache expires after 5 minutes
+/// - #[provider(cache_expiration = "1h")] - cache expires after 1 hour
 ///
-/// Supports stale-while-revalidate:
-/// - #[provider(stale_time_secs = 5)] - serve stale data after 5 seconds, refresh in background
-/// - #[provider(stale_time_millis = 3000)] - serve stale data after 3000 milliseconds, refresh in background
+/// Stale-while-revalidate with humantime:
+/// - #[provider(stale_time = "5s")] - serve stale data after 5 seconds, refresh in background
+/// - #[provider(stale_time = "30sec")] - serve stale data after 30 seconds, refresh in background
+/// - #[provider(stale_time = "2min")] - serve stale data after 2 minutes, refresh in background
 ///
 /// Can combine features:
-/// - #[provider(interval_secs = 10, cache_expiration_secs = 60)]
-/// - #[provider(stale_time_secs = 5, cache_expiration_secs = 30)]
+/// - #[provider(interval = "10s", cache_expiration = "1min")]
+/// - #[provider(stale_time = "5s", cache_expiration = "30s")]
+///
+/// Supported humantime formats:
+/// - "5s", "30sec", "2min", "1h", "1day"
+/// - "500ms", "1.5s", "2.5min"
+/// - Legacy numeric formats still supported: interval_secs, interval_millis, etc.
 #[proc_macro_attribute]
 pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
     let provider_args = if args.is_empty() {
@@ -229,30 +266,19 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
     }
 }
 
-fn generate_duration_impl(
-    method_name: &str,
-    secs: Option<u64>,
-    millis: Option<u64>,
-) -> TokenStream2 {
-    match (secs, millis) {
-        (Some(secs), _) => {
-            // Prefer seconds over millis if both specified
+fn generate_duration_impl(method_name: &str, duration: Option<Duration>) -> TokenStream2 {
+    match duration {
+        Some(duration) => {
             let method_ident = syn::Ident::new(method_name, proc_macro2::Span::call_site());
+            let secs = duration.as_secs();
+            let nanos = duration.subsec_nanos();
             quote! {
                 fn #method_ident(&self) -> Option<::std::time::Duration> {
-                    Some(::std::time::Duration::from_secs(#secs))
+                    Some(::std::time::Duration::new(#secs, #nanos))
                 }
             }
         }
-        (None, Some(millis)) => {
-            let method_ident = syn::Ident::new(method_name, proc_macro2::Span::call_site());
-            quote! {
-                fn #method_ident(&self) -> Option<::std::time::Duration> {
-                    Some(::std::time::Duration::from_millis(#millis))
-                }
-            }
-        }
-        (None, None) => {
+        None => {
             // No duration specified, use default (None)
             quote! {}
         }
@@ -260,27 +286,15 @@ fn generate_duration_impl(
 }
 
 fn generate_interval_impl(provider_args: &ProviderArgs) -> TokenStream2 {
-    generate_duration_impl(
-        "interval",
-        provider_args.interval_secs,
-        provider_args.interval_millis,
-    )
+    generate_duration_impl("interval", provider_args.interval)
 }
 
 fn generate_cache_expiration_impl(provider_args: &ProviderArgs) -> TokenStream2 {
-    generate_duration_impl(
-        "cache_expiration",
-        provider_args.cache_expiration_secs,
-        provider_args.cache_expiration_millis,
-    )
+    generate_duration_impl("cache_expiration", provider_args.cache_expiration)
 }
 
 fn generate_stale_time_impl(provider_args: &ProviderArgs) -> TokenStream2 {
-    generate_duration_impl(
-        "stale_time",
-        provider_args.stale_time_secs,
-        provider_args.stale_time_millis,
-    )
+    generate_duration_impl("stale_time", provider_args.stale_time)
 }
 
 struct ProviderInfo {
