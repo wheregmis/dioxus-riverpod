@@ -253,6 +253,10 @@ impl CacheEntry {
     fn is_expired(&self, expiration: Duration) -> bool {
         self.cached_at.elapsed() > expiration
     }
+
+    fn is_stale(&self, stale_time: Duration) -> bool {
+        self.cached_at.elapsed() > stale_time
+    }
 }
 
 /// Global cache for provider results with automatic cleanup
@@ -308,6 +312,47 @@ impl ProviderCache {
         entry.get::<T>()
     }
 
+    /// Get cached data with staleness information for SWR behavior
+    pub fn get_with_staleness<T: Clone + Send + Sync + 'static>(
+        &self,
+        key: &str,
+        stale_time: Option<Duration>,
+        expiration: Option<Duration>,
+    ) -> Option<(T, bool)> {
+        let cache_guard = self.cache.lock().ok()?;
+        let entry = cache_guard.get(key)?;
+
+        // Check if expired first
+        if let Some(exp_duration) = expiration {
+            if entry.is_expired(exp_duration) {
+                println!(
+                    "🗑️ [SWR DEBUG] Cache entry for key '{}' is expired after {:?}",
+                    key, exp_duration
+                );
+                return None; // Expired, return None to trigger fresh fetch
+            }
+        }
+
+        // Get the data
+        let data = entry.get::<T>()?;
+
+        // Check if stale
+        let is_stale = if let Some(stale_duration) = stale_time {
+            let elapsed = entry.cached_at.elapsed();
+            let is_stale = entry.is_stale(stale_duration);
+            println!(
+                "🔍 [SWR DEBUG] Cache entry for key '{}': age={:?}, stale_time={:?}, is_stale={}",
+                key, elapsed, stale_duration, is_stale
+            );
+            is_stale
+        } else {
+            println!("🔍 [SWR DEBUG] No stale_time configured for key '{}'", key);
+            false
+        };
+
+        Some((data, is_stale))
+    }
+
     /// Store a result in the cache
     pub fn set<T: Clone + Send + Sync + 'static>(&self, key: String, value: T) {
         if let Ok(mut cache) = self.cache.lock() {
@@ -354,6 +399,11 @@ where
 
     /// Get the cache expiration duration (None means no expiration)
     fn cache_expiration(&self) -> Option<Duration> {
+        None
+    }
+
+    /// Get the stale time duration for stale-while-revalidate behavior (None means no SWR)
+    fn stale_time(&self) -> Option<Duration> {
         None
     }
 }
@@ -438,6 +488,41 @@ where
             }
         }
 
+        // SWR staleness checking - runs on every render to check for stale data
+        let stale_time = provider.stale_time();
+        if let Some(stale_duration) = stale_time {
+            if let Ok(cache_lock) = cache.cache.lock() {
+                if let Some(entry) = cache_lock.get(&cache_key) {
+                    if entry.is_stale(stale_duration)
+                        && !entry.is_expired(cache_expiration.unwrap_or(Duration::from_secs(3600)))
+                    {
+                        // Data is stale but not expired - trigger background revalidation
+                        println!(
+                            "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
+                            cache_key
+                        );
+
+                        let cache = cache.clone();
+                        let cache_key = cache_key.clone();
+                        let provider = provider.clone();
+                        let refresh_registry = refresh_registry.clone();
+
+                        spawn(async move {
+                            let result = provider.run(()).await;
+                            cache.set(cache_key.clone(), result);
+
+                            // Trigger refresh to update UI with fresh data
+                            refresh_registry.trigger_refresh(&cache_key);
+                            println!(
+                                "✅ [SWR] Background revalidation completed for key: {}",
+                                cache_key
+                            );
+                        });
+                    }
+                }
+            }
+        }
+
         // Use memo with reactive dependencies to track changes automatically
         let _execution_memo = use_memo(use_reactive!(|provider| {
             let cache_key = provider.id(&());
@@ -474,11 +559,9 @@ where
                 });
             }
 
-            // Check cache first, with expiration if specified
+            // Check cache first - serve any available data (fresh or stale)
             let cache_expiration = provider.cache_expiration();
-            if let Some(cached_result) = cache
-                .get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
-            {
+            if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
                 match cached_result {
                     Ok(data) => {
                         let _ = spawn(async move {
@@ -556,6 +639,42 @@ where
             }
         }
 
+        // SWR staleness checking - runs on every render to check for stale data
+        let stale_time = provider.stale_time();
+        if let Some(stale_duration) = stale_time {
+            if let Ok(cache_lock) = cache.cache.lock() {
+                if let Some(entry) = cache_lock.get(&cache_key) {
+                    if entry.is_stale(stale_duration)
+                        && !entry.is_expired(cache_expiration.unwrap_or(Duration::from_secs(3600)))
+                    {
+                        // Data is stale but not expired - trigger background revalidation
+                        println!(
+                            "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
+                            cache_key
+                        );
+
+                        let cache = cache.clone();
+                        let cache_key = cache_key.clone();
+                        let provider = provider.clone();
+                        let param = param.clone();
+                        let refresh_registry = refresh_registry.clone();
+
+                        spawn(async move {
+                            let result = provider.run(param).await;
+                            cache.set(cache_key.clone(), result);
+
+                            // Trigger refresh to update UI with fresh data
+                            refresh_registry.trigger_refresh(&cache_key);
+                            println!(
+                                "✅ [SWR] Background revalidation completed for key: {}",
+                                cache_key
+                            );
+                        });
+                    }
+                }
+            }
+        }
+
         // Use memo with reactive dependencies to track changes automatically
         let _execution_memo = use_memo(use_reactive!(|provider, param| {
             let cache_key = provider.id(&param);
@@ -594,12 +713,19 @@ where
                 });
             }
 
-            // Check cache first, with expiration if specified
+            // Check cache first, with SWR support
             let cache_expiration = provider.cache_expiration();
-            if let Some(cached_result) = cache
-                .get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
+            let stale_time = provider.stale_time();
+
+            if let Some((cached_result, is_stale)) = cache
+                .get_with_staleness::<Result<P::Output, P::Error>>(
+                    &cache_key,
+                    stale_time,
+                    cache_expiration,
+                )
             {
-                match cached_result {
+                // Serve cached data immediately
+                match cached_result.clone() {
                     Ok(data) => {
                         let _ = spawn(async move {
                             state.set(AsyncState::Success(data));
@@ -611,6 +737,32 @@ where
                         });
                     }
                 }
+
+                // If data is stale, trigger background revalidation
+                if is_stale {
+                    println!(
+                        "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
+                        cache_key
+                    );
+                    let cache = cache.clone();
+                    let cache_key = cache_key.clone();
+                    let provider = provider.clone();
+                    let param = param.clone();
+                    let refresh_registry = refresh_registry.clone();
+
+                    spawn(async move {
+                        let result = provider.run(param).await;
+                        cache.set(cache_key.clone(), result);
+
+                        // Trigger refresh to update UI with fresh data
+                        refresh_registry.trigger_refresh(&cache_key);
+                        println!(
+                            "✅ [SWR] Background revalidation completed for key: {}",
+                            cache_key
+                        );
+                    });
+                }
+
                 return;
             }
 

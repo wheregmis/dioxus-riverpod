@@ -15,6 +15,8 @@ struct ProviderArgs {
     interval_millis: Option<u64>,
     cache_expiration_secs: Option<u64>,
     cache_expiration_millis: Option<u64>,
+    stale_time_secs: Option<u64>,
+    stale_time_millis: Option<u64>,
 }
 
 impl Parse for ProviderArgs {
@@ -42,6 +44,14 @@ impl Parse for ProviderArgs {
                     let lit: LitInt = input.parse()?;
                     args.cache_expiration_millis = Some(lit.base10_parse()?);
                 }
+                "stale_time_secs" => {
+                    let lit: LitInt = input.parse()?;
+                    args.stale_time_secs = Some(lit.base10_parse()?);
+                }
+                "stale_time_millis" => {
+                    let lit: LitInt = input.parse()?;
+                    args.stale_time_millis = Some(lit.base10_parse()?);
+                }
                 _ => return Err(syn::Error::new_spanned(ident, "Unknown argument")),
             }
 
@@ -67,8 +77,13 @@ impl Parse for ProviderArgs {
 /// - #[provider(cache_expiration_secs = 30)] - cache expires after 30 seconds
 /// - #[provider(cache_expiration_millis = 5000)] - cache expires after 5000 milliseconds
 ///
+/// Supports stale-while-revalidate:
+/// - #[provider(stale_time_secs = 5)] - serve stale data after 5 seconds, refresh in background
+/// - #[provider(stale_time_millis = 3000)] - serve stale data after 3000 milliseconds, refresh in background
+///
 /// Can combine features:
 /// - #[provider(interval_secs = 10, cache_expiration_secs = 60)]
+/// - #[provider(stale_time_secs = 5, cache_expiration_secs = 30)]
 #[proc_macro_attribute]
 pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
     let provider_args = if args.is_empty() {
@@ -105,6 +120,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
     // Generate interval and cache expiration implementations
     let interval_impl = generate_interval_impl(&provider_args);
     let cache_expiration_impl = generate_cache_expiration_impl(&provider_args);
+    let stale_time_impl = generate_stale_time_impl(&provider_args);
 
     // Generate common struct and const
     let common_struct = generate_common_struct_and_const(&info);
@@ -135,6 +151,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
 
                 #interval_impl
                 #cache_expiration_impl
+                #stale_time_impl
             }
         })
     } else {
@@ -170,6 +187,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
 
                     #interval_impl
                     #cache_expiration_impl
+                    #stale_time_impl
                 }
             })
         } else {
@@ -204,6 +222,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
 
                     #interval_impl
                     #cache_expiration_impl
+                    #stale_time_impl
                 }
             })
         }
@@ -253,6 +272,14 @@ fn generate_cache_expiration_impl(provider_args: &ProviderArgs) -> TokenStream2 
         "cache_expiration",
         provider_args.cache_expiration_secs,
         provider_args.cache_expiration_millis,
+    )
+}
+
+fn generate_stale_time_impl(provider_args: &ProviderArgs) -> TokenStream2 {
+    generate_duration_impl(
+        "stale_time",
+        provider_args.stale_time_secs,
+        provider_args.stale_time_millis,
     )
 }
 
