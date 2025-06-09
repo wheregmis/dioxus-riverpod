@@ -82,16 +82,7 @@ pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let input_fn = parse_macro_input!(input as ItemFn);
 
-    // Check if the function has parameters
-    let has_params = !input_fn.sig.inputs.is_empty();
-
-    let result = if has_params {
-        // Has parameters → Family Provider
-        generate_family_provider(input_fn, provider_args)
-    } else {
-        // No parameters → Future Provider
-        generate_future_provider(input_fn, provider_args)
-    };
+    let result = generate_provider(input_fn, provider_args);
 
     match result {
         Ok(tokens) => tokens.into(),
@@ -99,7 +90,7 @@ pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 }
 
-fn generate_future_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<TokenStream2> {
+fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<TokenStream2> {
     let info = extract_provider_info(&input_fn)?;
 
     let ProviderInfo {
@@ -118,80 +109,28 @@ fn generate_future_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
     // Generate common struct and const
     let common_struct = generate_common_struct_and_const(&info);
 
-    Ok(quote! {
-        #common_struct
-
-        impl #struct_name {
-            #fn_vis async fn call() -> Result<#output_type, #error_type> {
-                #fn_block
-            }
-        }
-
-        impl ::dioxus_riverpod::providers::Provider<()> for #struct_name {
-            type Output = #output_type;
-            type Error = #error_type;
-
-            fn run(&self, _param: ()) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
-                Self::call()
-            }
-
-            fn id(&self, _param: &()) -> String {
-                stringify!(#struct_name).to_string()
-            }
-
-            #interval_impl
-            #cache_expiration_impl
-        }
-    })
-}
-
-fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<TokenStream2> {
-    let info = extract_provider_info(&input_fn)?;
-    let params = extract_all_params(&input_fn)?;
-
-    let ProviderInfo {
-        fn_name,
-        fn_vis,
-        fn_block,
-        output_type,
-        error_type,
-        struct_name,
-        ..
-    } = &info;
-
-    // Generate interval and cache expiration implementations
-    let interval_impl = generate_interval_impl(&provider_args);
-    let cache_expiration_impl = generate_cache_expiration_impl(&provider_args);
-
-    // Generate common struct and const
-    let common_struct = generate_common_struct_and_const(&info);
-
-    // Handle single vs multiple parameters
-    if params.len() == 1 {
-        // Single parameter - keep existing behavior
-        let param = &params[0];
-        let param_name = &param.name;
-        let param_type = &param.ty;
-
+    // Determine parameter type and implementation based on function parameters
+    if input_fn.sig.inputs.is_empty() {
+        // No parameters - Provider<()>
         Ok(quote! {
             #common_struct
 
             impl #struct_name {
-                #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
+                #fn_vis async fn call() -> Result<#output_type, #error_type> {
                     #fn_block
                 }
             }
 
-            impl ::dioxus_riverpod::providers::Provider<#param_type> for #struct_name {
+            impl ::dioxus_riverpod::providers::Provider<()> for #struct_name {
                 type Output = #output_type;
                 type Error = #error_type;
 
-                fn run(&self, #param_name: #param_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
-                    Self::call(#param_name)
+                fn run(&self, _param: ()) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                    Self::call()
                 }
 
-                fn id(&self, param: &#param_type) -> String {
-                    format!("{}({:?})", stringify!(#struct_name), param)
+                fn id(&self, _param: &()) -> String {
+                    stringify!(#struct_name).to_string()
                 }
 
                 #interval_impl
@@ -199,39 +138,75 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
             }
         })
     } else {
-        // Multiple parameters - create a tuple type
-        let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
-        let param_types: Vec<_> = params.iter().map(|p| &p.ty).collect();
+        // Has parameters - extract and handle them
+        let params = extract_all_params(&input_fn)?;
 
-        // Simplified tuple type generation - always use trailing comma for consistency
-        let tuple_type = quote! { (#(#param_types,)*) };
+        if params.len() == 1 {
+            // Single parameter - Provider<ParamType>
+            let param = &params[0];
+            let param_name = &param.name;
+            let param_type = &param.ty;
 
-        Ok(quote! {
-            #common_struct
+            Ok(quote! {
+                #common_struct
 
-            impl #struct_name {
-                #fn_vis async fn call(#(#param_names: #param_types),*) -> Result<#output_type, #error_type> {
-                    #fn_block
-                }
-            }
-
-            impl ::dioxus_riverpod::providers::Provider<#tuple_type> for #struct_name {
-                type Output = #output_type;
-                type Error = #error_type;
-
-                fn run(&self, params: #tuple_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
-                    let (#(#param_names),*) = params;
-                    Self::call(#(#param_names),*)
+                impl #struct_name {
+                    #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
+                        #fn_block
+                    }
                 }
 
-                fn id(&self, params: &#tuple_type) -> String {
-                    format!("{}({:?})", stringify!(#struct_name), params)
+                impl ::dioxus_riverpod::providers::Provider<#param_type> for #struct_name {
+                    type Output = #output_type;
+                    type Error = #error_type;
+
+                    fn run(&self, #param_name: #param_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                        Self::call(#param_name)
+                    }
+
+                    fn id(&self, param: &#param_type) -> String {
+                        format!("{}({:?})", stringify!(#struct_name), param)
+                    }
+
+                    #interval_impl
+                    #cache_expiration_impl
+                }
+            })
+        } else {
+            // Multiple parameters - Provider<(Type1, Type2, ...)>
+            let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
+            let param_types: Vec<_> = params.iter().map(|p| &p.ty).collect();
+
+            // Generate tuple type with trailing comma for consistency
+            let tuple_type = quote! { (#(#param_types,)*) };
+
+            Ok(quote! {
+                #common_struct
+
+                impl #struct_name {
+                    #fn_vis async fn call(#(#param_names: #param_types),*) -> Result<#output_type, #error_type> {
+                        #fn_block
+                    }
                 }
 
-                #interval_impl
-                #cache_expiration_impl
-            }
-        })
+                impl ::dioxus_riverpod::providers::Provider<#tuple_type> for #struct_name {
+                    type Output = #output_type;
+                    type Error = #error_type;
+
+                    fn run(&self, params: #tuple_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                        let (#(#param_names),*) = params;
+                        Self::call(#(#param_names),*)
+                    }
+
+                    fn id(&self, params: &#tuple_type) -> String {
+                        format!("{}({:?})", stringify!(#struct_name), params)
+                    }
+
+                    #interval_impl
+                    #cache_expiration_impl
+                }
+            })
+        }
     }
 }
 
