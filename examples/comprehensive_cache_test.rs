@@ -282,11 +282,11 @@ fn app() -> Element {
     let current_time = use_provider(fetch_current_time, ());
 
     // Invalidation hooks
-    let invalidate_data = use_invalidate_provider(fetch_data);
+    let invalidate_data = use_invalidate_provider(fetch_data, ());
     let invalidate_user_data =
-        use_invalidate_family_provider(fetch_user_data, (*user_id.read(), *include_details.read()));
-    let invalidate_user_name = use_invalidate_family_provider(fetch_user_name, *user_id.read());
-    let invalidate_time = use_invalidate_provider(fetch_current_time);
+        use_invalidate_provider(fetch_user_data, (*user_id.read(), *include_details.read()));
+    let invalidate_user_name = use_invalidate_provider(fetch_user_name, *user_id.read());
+    let invalidate_time = use_invalidate_provider(fetch_current_time, ());
     let _clear_cache = use_clear_provider_cache();
 
     rsx! {

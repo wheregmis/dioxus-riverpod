@@ -1,3 +1,5 @@
+#![allow(unused_variables)] // Variables used in quote! macros aren't detected by compiler
+
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
@@ -98,30 +100,26 @@ pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 fn generate_future_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<TokenStream2> {
-    let fn_name = &input_fn.sig.ident;
-    let fn_vis = &input_fn.vis;
-    let fn_attrs = &input_fn.attrs;
-    let fn_block = &input_fn.block;
+    let info = extract_provider_info(&input_fn)?;
 
-    // Extract return type from Result<T, E>
-    let (output_type, error_type) = extract_result_types(&input_fn.sig.output)?;
+    let ProviderInfo {
+        fn_vis,
+        fn_block,
+        output_type,
+        error_type,
+        struct_name,
+        ..
+    } = &info;
 
-    // Generate the provider struct name (convert snake_case to PascalCase + Provider)
-    let struct_name = syn::Ident::new(
-        &format!("{}Provider", to_pascal_case(&fn_name.to_string())),
-        fn_name.span(),
-    );
-
-    // Generate interval implementation
+    // Generate interval and cache expiration implementations
     let interval_impl = generate_interval_impl(&provider_args);
-
-    // Generate cache expiration implementation
     let cache_expiration_impl = generate_cache_expiration_impl(&provider_args);
 
+    // Generate common struct and const
+    let common_struct = generate_common_struct_and_const(&info);
+
     Ok(quote! {
-        #(#fn_attrs)*
-        #[derive(Clone, PartialEq)]
-        #fn_vis struct #struct_name;
+        #common_struct
 
         impl #struct_name {
             #fn_vis async fn call() -> Result<#output_type, #error_type> {
@@ -129,52 +127,44 @@ fn generate_future_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
             }
         }
 
-        impl ::dioxus_riverpod::providers::FutureProvider for #struct_name {
+        impl ::dioxus_riverpod::providers::Provider<()> for #struct_name {
             type Output = #output_type;
             type Error = #error_type;
 
-            fn run(&self) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+            fn run(&self, _param: ()) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
                 Self::call()
             }
 
-            fn id(&self) -> String {
+            fn id(&self, _param: &()) -> String {
                 stringify!(#struct_name).to_string()
             }
 
             #interval_impl
             #cache_expiration_impl
         }
-
-        // Create a constant instance for easy usage
-        // Allow snake_case for ergonomic usage while suppressing the naming warning
-        #[allow(non_upper_case_globals)]
-        #fn_vis const #fn_name: #struct_name = #struct_name;
     })
 }
 
 fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<TokenStream2> {
-    let fn_name = &input_fn.sig.ident;
-    let fn_vis = &input_fn.vis;
-    let fn_attrs = &input_fn.attrs;
-    let fn_block = &input_fn.block;
-
-    // Extract all parameters (support multiple parameters)
+    let info = extract_provider_info(&input_fn)?;
     let params = extract_all_params(&input_fn)?;
 
-    // Extract return type from Result<T, E>
-    let (output_type, error_type) = extract_result_types(&input_fn.sig.output)?;
+    let ProviderInfo {
+        fn_name,
+        fn_vis,
+        fn_block,
+        output_type,
+        error_type,
+        struct_name,
+        ..
+    } = &info;
 
-    // Generate the provider struct name (convert snake_case to PascalCase + Provider)
-    let struct_name = syn::Ident::new(
-        &format!("{}Provider", to_pascal_case(&fn_name.to_string())),
-        fn_name.span(),
-    );
-
-    // Generate interval implementation
+    // Generate interval and cache expiration implementations
     let interval_impl = generate_interval_impl(&provider_args);
-
-    // Generate cache expiration implementation
     let cache_expiration_impl = generate_cache_expiration_impl(&provider_args);
+
+    // Generate common struct and const
+    let common_struct = generate_common_struct_and_const(&info);
 
     // Handle single vs multiple parameters
     if params.len() == 1 {
@@ -184,9 +174,7 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
         let param_type = &param.ty;
 
         Ok(quote! {
-            #(#fn_attrs)*
-            #[derive(Clone, PartialEq)]
-            #fn_vis struct #struct_name;
+            #common_struct
 
             impl #struct_name {
                 #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
@@ -194,7 +182,7 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
                 }
             }
 
-            impl ::dioxus_riverpod::providers::FamilyProvider<#param_type> for #struct_name {
+            impl ::dioxus_riverpod::providers::Provider<#param_type> for #struct_name {
                 type Output = #output_type;
                 type Error = #error_type;
 
@@ -209,28 +197,17 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
                 #interval_impl
                 #cache_expiration_impl
             }
-
-            // Create a constant instance for easy usage
-            // Allow snake_case for ergonomic usage while suppressing the naming warning
-            #[allow(non_upper_case_globals)]
-            #fn_vis const #fn_name: #struct_name = #struct_name;
         })
     } else {
         // Multiple parameters - create a tuple type
         let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
         let param_types: Vec<_> = params.iter().map(|p| &p.ty).collect();
 
-        // Create tuple type for parameters
-        let tuple_type = if param_types.len() == 2 {
-            quote! { (#(#param_types),*) }
-        } else {
-            quote! { (#(#param_types,)*) }
-        };
+        // Simplified tuple type generation - always use trailing comma for consistency
+        let tuple_type = quote! { (#(#param_types,)*) };
 
         Ok(quote! {
-            #(#fn_attrs)*
-            #[derive(Clone, PartialEq)]
-            #fn_vis struct #struct_name;
+            #common_struct
 
             impl #struct_name {
                 #fn_vis async fn call(#(#param_names: #param_types),*) -> Result<#output_type, #error_type> {
@@ -238,7 +215,7 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
                 }
             }
 
-            impl ::dioxus_riverpod::providers::FamilyProvider<#tuple_type> for #struct_name {
+            impl ::dioxus_riverpod::providers::Provider<#tuple_type> for #struct_name {
                 type Output = #output_type;
                 type Error = #error_type;
 
@@ -254,83 +231,120 @@ fn generate_family_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Re
                 #interval_impl
                 #cache_expiration_impl
             }
-
-            // Create a constant instance for easy usage
-            // Allow snake_case for ergonomic usage while suppressing the naming warning
-            #[allow(non_upper_case_globals)]
-            #fn_vis const #fn_name: #struct_name = #struct_name;
         })
     }
 }
 
-fn generate_interval_impl(provider_args: &ProviderArgs) -> TokenStream2 {
-    match (provider_args.interval_secs, provider_args.interval_millis) {
-        (Some(secs), None) => {
+fn generate_duration_impl(
+    method_name: &str,
+    secs: Option<u64>,
+    millis: Option<u64>,
+) -> TokenStream2 {
+    match (secs, millis) {
+        (Some(secs), _) => {
+            // Prefer seconds over millis if both specified
+            let method_ident = syn::Ident::new(method_name, proc_macro2::Span::call_site());
             quote! {
-                fn interval(&self) -> Option<::std::time::Duration> {
+                fn #method_ident(&self) -> Option<::std::time::Duration> {
                     Some(::std::time::Duration::from_secs(#secs))
                 }
             }
         }
         (None, Some(millis)) => {
+            let method_ident = syn::Ident::new(method_name, proc_macro2::Span::call_site());
             quote! {
-                fn interval(&self) -> Option<::std::time::Duration> {
+                fn #method_ident(&self) -> Option<::std::time::Duration> {
                     Some(::std::time::Duration::from_millis(#millis))
                 }
             }
         }
-        (Some(secs), Some(_millis)) => {
-            // If both are specified, prefer seconds and ignore millis
-            quote! {
-                fn interval(&self) -> Option<::std::time::Duration> {
-                    Some(::std::time::Duration::from_secs(#secs))
-                }
-            }
-        }
         (None, None) => {
-            // No interval specified, use default (None)
+            // No duration specified, use default (None)
             quote! {}
         }
     }
 }
 
+fn generate_interval_impl(provider_args: &ProviderArgs) -> TokenStream2 {
+    generate_duration_impl(
+        "interval",
+        provider_args.interval_secs,
+        provider_args.interval_millis,
+    )
+}
+
 fn generate_cache_expiration_impl(provider_args: &ProviderArgs) -> TokenStream2 {
-    match (
+    generate_duration_impl(
+        "cache_expiration",
         provider_args.cache_expiration_secs,
         provider_args.cache_expiration_millis,
-    ) {
-        (Some(secs), None) => {
-            quote! {
-                fn cache_expiration(&self) -> Option<::std::time::Duration> {
-                    Some(::std::time::Duration::from_secs(#secs))
-                }
-            }
-        }
-        (None, Some(millis)) => {
-            quote! {
-                fn cache_expiration(&self) -> Option<::std::time::Duration> {
-                    Some(::std::time::Duration::from_millis(#millis))
-                }
-            }
-        }
-        (Some(secs), Some(_millis)) => {
-            // If both are specified, prefer seconds and ignore millis
-            quote! {
-                fn cache_expiration(&self) -> Option<::std::time::Duration> {
-                    Some(::std::time::Duration::from_secs(#secs))
-                }
-            }
-        }
-        (None, None) => {
-            // No cache expiration specified, use default (None)
-            quote! {}
-        }
-    }
+    )
+}
+
+struct ProviderInfo {
+    fn_name: syn::Ident,
+    fn_vis: syn::Visibility,
+    fn_attrs: Vec<syn::Attribute>,
+    fn_block: Box<syn::Block>,
+    output_type: Type,
+    error_type: Type,
+    struct_name: syn::Ident,
 }
 
 struct ParamInfo {
     name: syn::Ident,
     ty: Type,
+}
+
+fn extract_provider_info(input_fn: &ItemFn) -> Result<ProviderInfo> {
+    let fn_name = input_fn.sig.ident.clone();
+    let fn_vis = input_fn.vis.clone();
+    let fn_attrs = input_fn.attrs.clone();
+    let fn_block = input_fn.block.clone();
+
+    // Extract return type from Result<T, E>
+    let (output_type, error_type) = extract_result_types(&input_fn.sig.output)?;
+
+    // Generate the provider struct name (convert snake_case to PascalCase + Provider)
+    let struct_name = syn::Ident::new(
+        &format!("{}Provider", to_pascal_case(&fn_name.to_string())),
+        fn_name.span(),
+    );
+
+    Ok(ProviderInfo {
+        fn_name,
+        fn_vis,
+        fn_attrs,
+        fn_block,
+        output_type,
+        error_type,
+        struct_name,
+    })
+}
+
+#[allow(unused_variables)] // Variables used in quote! macro aren't detected by compiler
+#[allow(clippy::unused_unit)] // Allow clippy warnings for proc macros
+fn generate_common_struct_and_const(info: &ProviderInfo) -> TokenStream2 {
+    let ProviderInfo {
+        fn_name,
+        fn_vis,
+        fn_attrs,
+        struct_name,
+        fn_block: _,
+        output_type: _,
+        error_type: _,
+    } = info;
+
+    quote! {
+        #(#fn_attrs)*
+        #[derive(Clone, PartialEq)]
+        #fn_vis struct #struct_name;
+
+        // Create a constant instance for easy usage
+        // Allow snake_case for ergonomic usage while suppressing the naming warning
+        #[allow(non_upper_case_globals)]
+        #fn_vis const #fn_name: #struct_name = #struct_name;
+    }
 }
 
 fn extract_all_params(input_fn: &ItemFn) -> Result<Vec<ParamInfo>> {

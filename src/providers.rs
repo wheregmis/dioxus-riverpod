@@ -5,8 +5,8 @@
 //!
 //! ## Core Features
 //!
-//! - **Future Providers**: Async operations that return data with automatic caching
-//! - **Family Providers**: Parameterized providers for dynamic data fetching
+//! - **Providers**: Async operations that return data with automatic caching
+//! - **Parameterized Providers**: Providers that accept parameters for dynamic data fetching
 //! - **Interval Providers**: Auto-refreshing providers for live data
 //! - **Cache Management**: Automatic caching with selective invalidation
 //! - **Reactive Updates**: UI automatically updates when data changes
@@ -37,7 +37,7 @@
 //!     Ok(Data { value: 42 })
 //! }
 //!
-//! // Family provider with parameters
+//! // Parameterized provider
 //! #[provider]
 //! async fn fetch_user_posts(user_id: u32) -> Result<Vec<Post>, String> {
 //!     Ok(vec![Post { title: format!("Post by user {}", user_id) }])
@@ -330,40 +330,21 @@ impl ProviderCache {
     }
 }
 
-/// A trait for defining future providers - async operations that return data
-pub trait FutureProvider: Clone + PartialEq + 'static {
-    type Output: Clone + PartialEq + Send + Sync + 'static;
-    type Error: Clone + Send + Sync + 'static;
-
-    /// Execute the async operation
-    fn run(&self) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
-
-    /// Get a unique identifier for this provider (used for caching/invalidation)
-    fn id(&self) -> String;
-
-    /// Get the interval duration for automatic refresh (None means no interval)
-    fn interval(&self) -> Option<Duration> {
-        None
-    }
-
-    /// Get the cache expiration duration (None means no expiration)
-    fn cache_expiration(&self) -> Option<Duration> {
-        None
-    }
-}
-
-/// A trait for defining family providers - parameterized async operations
-pub trait FamilyProvider<Param>: Clone + PartialEq + 'static
+/// A unified trait for defining providers - async operations that return data
+///
+/// This trait supports both simple providers (no parameters) and parameterized providers.
+/// Use `Provider<()>` for simple providers and `Provider<ParamType>` for parameterized providers.
+pub trait Provider<Param = ()>: Clone + PartialEq + 'static
 where
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
     type Output: Clone + PartialEq + Send + Sync + 'static;
     type Error: Clone + Send + Sync + 'static;
 
-    /// Execute the async operation with the given parameter
+    /// Execute the async operation
     fn run(&self, param: Param) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
 
-    /// Get a unique identifier for this provider with the parameter
+    /// Get a unique identifier for this provider (used for caching/invalidation)
     fn id(&self, param: &Param) -> String;
 
     /// Get the interval duration for automatic refresh (None means no interval)
@@ -382,22 +363,10 @@ pub fn use_provider_cache() -> ProviderCache {
     use_context::<ProviderCache>()
 }
 
-/// Hook to invalidate a specific future provider cache entry
-pub fn use_invalidate_provider<P: FutureProvider>(provider: P) -> impl Fn() + Clone {
-    let cache = use_provider_cache();
-    let refresh_registry = use_context::<RefreshRegistry>();
-    let cache_key = provider.id();
-
-    move || {
-        cache.invalidate(&cache_key);
-        refresh_registry.trigger_refresh(&cache_key);
-    }
-}
-
-/// Hook to invalidate a specific family provider cache entry
-pub fn use_invalidate_family_provider<P, Param>(provider: P, param: Param) -> impl Fn() + Clone
+/// Hook to invalidate a specific provider cache entry
+pub fn use_invalidate_provider<P, Param>(provider: P, param: Param) -> impl Fn() + Clone
 where
-    P: FamilyProvider<Param>,
+    P: Provider<Param>,
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
     let cache = use_provider_cache();
@@ -423,10 +392,10 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 
 //
 // ============================================================================
-// Unified Provider Hook - Works with both Future and Family Providers
+// Unified Provider Hook - Works with all Provider types
 // ============================================================================
 
-/// Trait for unified provider usage - automatically handles both future and family providers
+/// Trait for unified provider usage - automatically handles providers with and without parameters
 pub trait UseProvider<Args> {
     type Output: Clone + PartialEq + Send + Sync + 'static;
     type Error: Clone + Send + Sync + 'static;
@@ -434,10 +403,10 @@ pub trait UseProvider<Args> {
     fn use_provider(self, args: Args) -> Signal<AsyncState<Self::Output, Self::Error>>;
 }
 
-/// Implementation for future providers (no parameters)
+/// Implementation for providers with no parameters (future providers)
 impl<P> UseProvider<()> for P
 where
-    P: FutureProvider + Send,
+    P: Provider<()> + Send,
 {
     type Output = P::Output;
     type Error = P::Error;
@@ -449,7 +418,7 @@ where
         let refresh_registry = use_context::<RefreshRegistry>();
 
         // Check cache expiration before the memo - this happens on every render
-        let cache_key = provider.id();
+        let cache_key = provider.id(&());
         let cache_expiration = provider.cache_expiration();
 
         // If cache expiration is enabled, check if current cache entry is expired and remove it
@@ -471,7 +440,7 @@ where
 
         // Use memo with reactive dependencies to track changes automatically
         let _execution_memo = use_memo(use_reactive!(|provider| {
-            let cache_key = provider.id();
+            let cache_key = provider.id(&());
 
             // Subscribe to refresh events for this cache key if we have a reactive context
             if let Some(reactive_context) = ReactiveContext::current() {
@@ -496,7 +465,7 @@ where
                     let refresh_registry_for_task = refresh_registry_clone.clone();
 
                     tokio::spawn(async move {
-                        let result = provider_for_task.run().await;
+                        let result = provider_for_task.run(()).await;
                         cache_for_task.set(cache_key_for_task.clone(), result);
 
                         // Trigger refresh to mark reactive contexts as dirty and update UI
@@ -507,8 +476,8 @@ where
 
             // Check cache first, with expiration if specified
             let cache_expiration = provider.cache_expiration();
-            if let Some(cached_result) =
-                cache.get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
+            if let Some(cached_result) = cache
+                .get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
             {
                 match cached_result {
                     Ok(data) => {
@@ -536,7 +505,7 @@ where
             let mut state_for_async = state;
 
             spawn(async move {
-                let result = provider.run().await;
+                let result = provider.run(()).await;
                 cache.set(cache_key, result.clone());
 
                 match result {
@@ -550,10 +519,10 @@ where
     }
 }
 
-/// Implementation for family providers (with parameters)
+/// Implementation for providers with parameters (family providers)
 impl<P, Param> UseProvider<(Param,)> for P
 where
-    P: FamilyProvider<Param> + Send,
+    P: Provider<Param> + Send,
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
     type Output = P::Output;
@@ -627,8 +596,8 @@ where
 
             // Check cache first, with expiration if specified
             let cache_expiration = provider.cache_expiration();
-            if let Some(cached_result) =
-                cache.get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
+            if let Some(cached_result) = cache
+                .get_with_expiration::<Result<P::Output, P::Error>>(&cache_key, cache_expiration)
             {
                 match cached_result {
                     Ok(data) => {
@@ -671,18 +640,18 @@ where
     }
 }
 
-/// Unified hook for using any provider - automatically detects future vs family providers
+/// Unified hook for using any provider - automatically detects parameterized vs non-parameterized providers
 ///
 /// ## Usage
 ///
 /// ```rust,ignore
 /// use dioxus::prelude::*;
 /// use dioxus_riverpod::prelude::*;
-/// 
-/// // Future provider (no parameters)
+///
+/// // Provider with no parameters
 /// let data = use_provider(fetch_data, ());
 ///
-/// // Family provider (with parameters)  
+/// // Provider with parameters  
 /// let user_data = use_provider(fetch_user, (user_id,));
 /// ```
 pub fn use_provider<P, Args>(provider: P, args: Args) -> Signal<AsyncState<P::Output, P::Error>>
@@ -691,5 +660,3 @@ where
 {
     provider.use_provider(args)
 }
-
-
