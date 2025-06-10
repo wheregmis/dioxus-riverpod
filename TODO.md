@@ -52,7 +52,7 @@ async fn user_posts(user_id: u32) -> Result<Vec<Post>, Error> { }
 **STATUS**: ✅ **IMPLEMENTATION COMPLETE** - All SWR functionality working correctly
 
 **Implementation Summary**:
-- ✅ Added `stale_time_secs` and `stale_time_millis` parameters to `#[provider]` macro
+- ✅ Added `stale_time` parameter to `#[provider]` macro
 - ✅ Extended cache system with staleness detection and SWR-aware data access
 - ✅ Implemented background revalidation that triggers UI updates when fresh data arrives
 - ✅ Created comprehensive demo showcasing three distinct caching patterns
@@ -61,11 +61,11 @@ async fn user_posts(user_id: u32) -> Result<Vec<Post>, Error> { }
 **API Examples**:
 ```rust
 // Pure SWR - serves stale data instantly after 5s, background revalidation
-#[provider(stale_time_secs = 5)]
+#[provider(stale_time = "5s")]
 async fn user_profile_swr() -> Result<User, Error> { }
 
 // Traditional cache - shows loading when expired after 8s
-#[provider(cache_expiration_secs = 8)]
+#[provider(cache_expiration = "8s")]
 async fn user_profile_traditional() -> Result<User, Error> { }
 
 // No caching - always fresh, always shows loading
@@ -75,7 +75,7 @@ async fn user_profile_fresh() -> Result<User, Error> { }
 
 **Completed Features**:
 - ✅ **Core Implementation**
-  - ✅ Added `stale_time_secs/millis` parameters to `#[provider]` macro
+  - ✅ Added `stale_time` parameter to `#[provider]` macro
   - ✅ Modified cache storage to track data freshness separately from cache expiration
   - ✅ Implemented automatic background revalidation when stale data is accessed
   - ✅ Added comprehensive debug logging for SWR behavior

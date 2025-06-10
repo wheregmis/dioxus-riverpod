@@ -575,7 +575,7 @@ where
                 // Schedule disposal after the specified delay
                 let dispose_delay = provider_for_cleanup
                     .dispose_delay()
-                    .unwrap_or_else(|| DisposalRegistry::default_dispose_delay());
+                    .unwrap_or_else(DisposalRegistry::default_dispose_delay);
                 disposal_reg.schedule_disposal(cache_key_for_cleanup.clone(), dispose_delay);
             }
         });
@@ -798,7 +798,7 @@ where
                 // Schedule disposal after the specified delay
                 let dispose_delay = provider_for_cleanup
                     .dispose_delay()
-                    .unwrap_or_else(|| DisposalRegistry::default_dispose_delay());
+                    .unwrap_or_else(DisposalRegistry::default_dispose_delay);
                 disposal_reg.schedule_disposal(cache_key_for_cleanup.clone(), dispose_delay);
             }
         });
@@ -941,31 +941,32 @@ where
                 }
 
                 // If data is stale, trigger background revalidation
-                if is_stale && !refresh_registry.is_revalidation_in_progress(&cache_key) {
-                    if refresh_registry.start_revalidation(&cache_key) {
+                if is_stale
+                    && !refresh_registry.is_revalidation_in_progress(&cache_key)
+                    && refresh_registry.start_revalidation(&cache_key)
+                {
+                    println!(
+                        "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
+                        cache_key
+                    );
+                    let cache = cache.clone();
+                    let cache_key_clone = cache_key.clone();
+                    let provider = provider.clone();
+                    let param = param.clone();
+                    let refresh_registry_clone = refresh_registry.clone();
+
+                    spawn(async move {
+                        let result = provider.run(param).await;
+                        cache.set(cache_key_clone.clone(), result);
+
+                        // Mark revalidation as complete and trigger refresh
+                        refresh_registry_clone.complete_revalidation(&cache_key_clone);
+                        refresh_registry_clone.trigger_refresh(&cache_key_clone);
                         println!(
-                            "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
-                            cache_key
+                            "✅ [SWR] Background revalidation completed for key: {}",
+                            cache_key_clone
                         );
-                        let cache = cache.clone();
-                        let cache_key_clone = cache_key.clone();
-                        let provider = provider.clone();
-                        let param = param.clone();
-                        let refresh_registry_clone = refresh_registry.clone();
-
-                        spawn(async move {
-                            let result = provider.run(param).await;
-                            cache.set(cache_key_clone.clone(), result);
-
-                            // Mark revalidation as complete and trigger refresh
-                            refresh_registry_clone.complete_revalidation(&cache_key_clone);
-                            refresh_registry_clone.trigger_refresh(&cache_key_clone);
-                            println!(
-                                "✅ [SWR] Background revalidation completed for key: {}",
-                                cache_key_clone
-                            );
-                        });
-                    }
+                    });
                 }
 
                 return;

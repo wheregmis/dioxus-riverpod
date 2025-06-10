@@ -52,37 +52,6 @@ impl Parse for ProviderArgs {
                     })?;
                     args.stale_time = Some(duration);
                 }
-                // Legacy support for old format (keep for backward compatibility)
-                "interval_secs" => {
-                    let lit: syn::LitInt = input.parse()?;
-                    let secs: u64 = lit.base10_parse()?;
-                    args.interval = Some(Duration::from_secs(secs));
-                }
-                "interval_millis" => {
-                    let lit: syn::LitInt = input.parse()?;
-                    let millis: u64 = lit.base10_parse()?;
-                    args.interval = Some(Duration::from_millis(millis));
-                }
-                "cache_expiration_secs" => {
-                    let lit: syn::LitInt = input.parse()?;
-                    let secs: u64 = lit.base10_parse()?;
-                    args.cache_expiration = Some(Duration::from_secs(secs));
-                }
-                "cache_expiration_millis" => {
-                    let lit: syn::LitInt = input.parse()?;
-                    let millis: u64 = lit.base10_parse()?;
-                    args.cache_expiration = Some(Duration::from_millis(millis));
-                }
-                "stale_time_secs" => {
-                    let lit: syn::LitInt = input.parse()?;
-                    let secs: u64 = lit.base10_parse()?;
-                    args.stale_time = Some(Duration::from_secs(secs));
-                }
-                "stale_time_millis" => {
-                    let lit: syn::LitInt = input.parse()?;
-                    let millis: u64 = lit.base10_parse()?;
-                    args.stale_time = Some(Duration::from_millis(millis));
-                }
                 "auto_dispose" => {
                     let lit: syn::LitBool = input.parse()?;
                     args.auto_dispose = Some(lit.value);
@@ -134,7 +103,6 @@ impl Parse for ProviderArgs {
 /// Supported humantime formats:
 /// - "5s", "30sec", "2min", "1h", "1day"
 /// - "500ms", "1.5s", "2.5min"
-/// - Legacy numeric formats still supported: interval_secs, interval_millis, etc.
 #[proc_macro_attribute]
 pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
     let provider_args = if args.is_empty() {
