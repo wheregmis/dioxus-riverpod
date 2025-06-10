@@ -58,6 +58,7 @@ use std::{
     time::Duration,
 };
 use tokio::task::JoinHandle;
+use tracing::debug;
 
 //
 // ============================================================================
@@ -356,7 +357,7 @@ impl ProviderCache {
         if is_expired {
             if let Ok(mut cache) = self.cache.lock() {
                 cache.remove(key);
-                println!(
+                debug!(
                     "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
                     key
                 );
@@ -383,7 +384,7 @@ impl ProviderCache {
         // Check if expired first
         if let Some(exp_duration) = expiration {
             if entry.is_expired(exp_duration) {
-                println!(
+                debug!(
                     "🗑️ [SWR DEBUG] Cache entry for key '{}' is expired after {:?}",
                     key, exp_duration
                 );
@@ -396,15 +397,15 @@ impl ProviderCache {
 
         // Check if stale
         let is_stale = if let Some(stale_duration) = stale_time {
-            let elapsed = entry.cached_at.elapsed();
             let is_stale = entry.is_stale(stale_duration);
-            println!(
+            let elapsed = entry.cached_at.elapsed();
+            debug!(
                 "🔍 [SWR DEBUG] Cache entry for key '{}': age={:?}, stale_time={:?}, is_stale={}",
                 key, elapsed, stale_duration, is_stale
             );
             is_stale
         } else {
-            println!("🔍 [SWR DEBUG] No stale_time configured for key '{}'", key);
+            debug!("🔍 [SWR DEBUG] No stale_time configured for key '{}'", key);
             false
         };
 
@@ -564,7 +565,7 @@ where
                 if let Ok(cache_lock) = cache_for_cleanup.cache.lock() {
                     if let Some(entry) = cache_lock.get(&cache_key_for_cleanup) {
                         entry.remove_reference();
-                        println!(
+                        debug!(
                             "🔄 [AUTO-DISPOSE] Removed reference for: {} (refs: {})",
                             cache_key_for_cleanup,
                             entry.reference_count()
@@ -585,7 +586,7 @@ where
             if let Ok(mut cache_lock) = cache.cache.lock() {
                 if let Some(entry) = cache_lock.get(&cache_key) {
                     if entry.is_expired(expiration) {
-                        println!(
+                        debug!(
                             "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
                             cache_key
                         );
@@ -608,7 +609,7 @@ where
                     {
                         // Data is stale but not expired and no revalidation in progress - trigger background revalidation
                         if refresh_registry.start_revalidation(&cache_key) {
-                            println!(
+                            debug!(
                                 "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
                                 cache_key
                             );
@@ -625,7 +626,7 @@ where
                                 // Mark revalidation as complete and trigger refresh
                                 refresh_registry_clone.complete_revalidation(&cache_key_clone);
                                 refresh_registry_clone.trigger_refresh(&cache_key_clone);
-                                println!(
+                                debug!(
                                     "✅ [SWR] Background revalidation completed for key: {}",
                                     cache_key_clone
                                 );
@@ -683,7 +684,7 @@ where
                     if let Ok(cache_lock) = cache.cache.lock() {
                         if let Some(entry) = cache_lock.get(&cache_key) {
                             entry.add_reference();
-                            println!(
+                            debug!(
                                 "🔄 [AUTO-DISPOSE] Added reference for: {} (refs: {})",
                                 cache_key,
                                 entry.reference_count()
@@ -727,7 +728,7 @@ where
                     if let Ok(cache_lock) = cache.cache.lock() {
                         if let Some(entry) = cache_lock.get(&cache_key) {
                             entry.add_reference();
-                            println!(
+                            debug!(
                                 "🔄 [AUTO-DISPOSE] Added reference for new entry: {} (refs: {})",
                                 cache_key,
                                 entry.reference_count()
@@ -787,7 +788,7 @@ where
                 if let Ok(cache_lock) = cache_for_cleanup.cache.lock() {
                     if let Some(entry) = cache_lock.get(&cache_key_for_cleanup) {
                         entry.remove_reference();
-                        println!(
+                        debug!(
                             "🔄 [AUTO-DISPOSE] Removed reference for: {} (refs: {})",
                             cache_key_for_cleanup,
                             entry.reference_count()
@@ -808,7 +809,7 @@ where
             if let Ok(mut cache_lock) = cache.cache.lock() {
                 if let Some(entry) = cache_lock.get(&cache_key) {
                     if entry.is_expired(expiration) {
-                        println!(
+                        debug!(
                             "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
                             cache_key
                         );
@@ -831,7 +832,7 @@ where
                     {
                         // Data is stale but not expired and no revalidation in progress - trigger background revalidation
                         if refresh_registry.start_revalidation(&cache_key) {
-                            println!(
+                            debug!(
                                 "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
                                 cache_key
                             );
@@ -849,7 +850,7 @@ where
                                 // Mark revalidation as complete and trigger refresh
                                 refresh_registry_clone.complete_revalidation(&cache_key_clone);
                                 refresh_registry_clone.trigger_refresh(&cache_key_clone);
-                                println!(
+                                debug!(
                                     "✅ [SWR] Background revalidation completed for key: {}",
                                     cache_key_clone
                                 );
@@ -917,7 +918,7 @@ where
                     if let Ok(cache_lock) = cache.cache.lock() {
                         if let Some(entry) = cache_lock.get(&cache_key) {
                             entry.add_reference();
-                            println!(
+                            debug!(
                                 "🔄 [AUTO-DISPOSE] Added reference for: {} (refs: {})",
                                 cache_key,
                                 entry.reference_count()
@@ -945,7 +946,7 @@ where
                     && !refresh_registry.is_revalidation_in_progress(&cache_key)
                     && refresh_registry.start_revalidation(&cache_key)
                 {
-                    println!(
+                    debug!(
                         "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
                         cache_key
                     );
@@ -962,7 +963,7 @@ where
                         // Mark revalidation as complete and trigger refresh
                         refresh_registry_clone.complete_revalidation(&cache_key_clone);
                         refresh_registry_clone.trigger_refresh(&cache_key_clone);
-                        println!(
+                        debug!(
                             "✅ [SWR] Background revalidation completed for key: {}",
                             cache_key_clone
                         );
@@ -993,7 +994,7 @@ where
                     if let Ok(cache_lock) = cache.cache.lock() {
                         if let Some(entry) = cache_lock.get(&cache_key) {
                             entry.add_reference();
-                            println!(
+                            debug!(
                                 "🔄 [AUTO-DISPOSE] Added reference for new entry: {} (refs: {})",
                                 cache_key,
                                 entry.reference_count()
@@ -1076,9 +1077,9 @@ impl DisposalRegistry {
                         if entry.reference_count() == 0 {
                             drop(cache_guard);
                             cache_clone.invalidate(&cache_key_clone);
-                            println!("🗑️ [AUTO-DISPOSE] Disposed provider: {}", cache_key_clone);
+                            debug!("🗑️ [AUTO-DISPOSE] Disposed provider: {}", cache_key_clone);
                         } else {
-                            println!(
+                            debug!(
                                 "🔄 [AUTO-DISPOSE] Disposal skipped (provider in use): {}",
                                 cache_key_clone
                             );
@@ -1096,7 +1097,7 @@ impl DisposalRegistry {
         if let Ok(mut timers) = self.disposal_timers.lock() {
             if let Some(timer) = timers.remove(cache_key) {
                 timer.abort();
-                println!("🔄 [AUTO-DISPOSE] Cancelled disposal for: {}", cache_key);
+                debug!("🔄 [AUTO-DISPOSE] Cancelled disposal for: {}", cache_key);
             }
         }
     }

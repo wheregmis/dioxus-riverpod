@@ -195,7 +195,7 @@ fn SimpleSWRDemo() -> Element {
     // Force UI update every second to show real-time data age
     let update_trigger = use_signal(|| 0);
     use_effect(move || {
-        let mut update_trigger = update_trigger.clone();
+        let mut update_trigger = update_trigger;
         spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_millis(1000)).await;
@@ -328,6 +328,8 @@ fn SimpleSWRDemo() -> Element {
 }
 
 fn main() {
+    // Initialize tracing for better debug output
+    tracing_subscriber::fmt::init();
     dioxus::launch(app);
 }
 

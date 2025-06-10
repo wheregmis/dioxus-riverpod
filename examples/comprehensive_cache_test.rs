@@ -649,5 +649,7 @@ fn app() -> Element {
 }
 
 fn main() {
+    // Initialize tracing for better debug output
+    tracing_subscriber::fmt::init();
     launch(app);
 }

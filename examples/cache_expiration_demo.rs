@@ -130,6 +130,9 @@ fn App() -> Element {
 }
 
 fn main() {
+    // Initialize tracing for better debug output
+    tracing_subscriber::fmt::init();
+
     println!("🚀 Starting Cache Expiration Demo");
     println!("📋 Instructions:");
     println!("   1. Watch for provider execution logs when page loads");

@@ -223,8 +223,8 @@ fn RegularDataComponent() -> Element {
 }
 
 fn main() {
-    // Initialize the logger to see disposal messages in console
-    env_logger::init();
+    // Initialize the tracing subscriber to see disposal messages in console
+    tracing_subscriber::fmt::init();
 
     dioxus::launch(|| {
         rsx! {
@@ -243,13 +243,13 @@ fn main() {
 // Context providers for the auto-dispose functionality
 #[component]
 fn ProviderCacheProvider(children: Element) -> Element {
-    use_context_provider(|| ProviderCache::new());
+    use_context_provider(ProviderCache::new);
     rsx! { {children} }
 }
 
 #[component]
 fn RefreshRegistryProvider(children: Element) -> Element {
-    use_context_provider(|| RefreshRegistry::default());
+    use_context_provider(RefreshRegistry::default);
     rsx! { {children} }
 }
 
