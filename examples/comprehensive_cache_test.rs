@@ -9,7 +9,7 @@
 //! - Interval-based auto-refresh
 //! - Stale-while-revalidate (SWR)
 //! - Cache expiration with TTL
-//! - Auto-dispose for memory management
+//! - Intelligent cache management for memory optimization
 //! - Manual cache invalidation
 //! - Parameterized providers
 //! - Error handling and recovery
@@ -117,8 +117,8 @@ async fn fetch_analytics_report() -> Result<AnalyticsReport, String> {
     })
 }
 
-/// Auto-dispose provider - cleans up after 7 seconds of no use
-#[provider(auto_dispose = true, dispose_delay = "7s")]
+/// Cache expiration provider - cleans up after 7 seconds
+#[provider(cache_expiration = "7s")]
 async fn fetch_temporary_data(session_id: String) -> Result<TempSessionData, String> {
     sleep(Duration::from_millis(600)).await;
 
@@ -137,8 +137,8 @@ async fn fetch_temporary_data(session_id: String) -> Result<TempSessionData, Str
     })
 }
 
-/// Combined strategy - SWR + Auto-dispose for optimal UX and memory management
-#[provider(stale_time = "5s", auto_dispose = true, dispose_delay = "12s")]
+/// Combined strategy - SWR + Cache expiration for optimal UX and memory management
+#[provider(stale_time = "5s", cache_expiration = "12s")]
 async fn fetch_chat_messages(chat_id: u32) -> Result<ChatData, String> {
     sleep(Duration::from_millis(400)).await;
 
@@ -339,8 +339,8 @@ fn ComprehensiveCacheTest() -> Element {
     let refresh_metrics = use_invalidate_provider(fetch_live_metrics, ());
     let refresh_dashboard = use_invalidate_provider(fetch_user_dashboard, *selected_user_id.read());
     let refresh_analytics = use_invalidate_provider(fetch_analytics_report, ());
-    let refresh_temp = use_invalidate_provider(fetch_temporary_data, session_id.read().clone());
-    let refresh_chat = use_invalidate_provider(fetch_chat_messages, *selected_chat_id.read());
+    let _refresh_temp = use_invalidate_provider(fetch_temporary_data, session_id.read().clone());
+    let _refresh_chat = use_invalidate_provider(fetch_chat_messages, *selected_chat_id.read());
 
     rsx! {
         div { class: "comprehensive-demo",

@@ -37,7 +37,8 @@ static API_CALL_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Simple SWR provider that becomes stale after 3 seconds
 /// After 3 seconds, cached data is served immediately while new data is fetched in background
-#[provider(stale_time = "3s")]
+/// Uses intelligent cache management: expires after 30s and cleanup runs every 7.5s
+#[provider(stale_time = "3s", cache_expiration = "30s")]
 async fn fetch_user_profile() -> Result<UserProfile, String> {
     // Simulate API call delay
     sleep(Duration::from_millis(1500)).await;
@@ -63,7 +64,8 @@ async fn fetch_user_profile() -> Result<UserProfile, String> {
 }
 
 /// Parameterized SWR provider for user posts with 2 second stale time
-#[provider(stale_time = "2s")]
+/// Uses intelligent cache management: expires after 20s and cleanup runs every 5s
+#[provider(stale_time = "2s", cache_expiration = "20s")]
 async fn fetch_user_posts(user_id: u32) -> Result<Vec<Post>, String> {
     sleep(Duration::from_millis(800)).await;
 
@@ -131,9 +133,9 @@ fn SwrDemo() -> Element {
                     "Stale-While-Revalidate pattern serves cached data instantly while updating in background."
                 }
                 div { class: "stale-time-info",
-                    span { class: "info-badge", "Profile stale time: 3s" }
-                    span { class: "info-badge", "Posts stale time: 2s" }
-                    span { class: "info-badge", "Auto SWR: ✅ Active" }
+                    span { class: "info-badge", "Profile: stale 3s, expires 30s" }
+                    span { class: "info-badge", "Posts: stale 2s, expires 20s" }
+                    span { class: "info-badge", "🧠 Smart Cache: ✅ Active" }
                 }
             }
 

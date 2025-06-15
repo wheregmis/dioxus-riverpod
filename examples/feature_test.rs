@@ -26,23 +26,24 @@ use wasmtimer::tokio::sleep;
 /// Global counter for simulating unique API calls
 static CALL_COUNTER: AtomicU32 = AtomicU32::new(0);
 
-/// Test provider with interval (auto-refresh every 3 seconds)
-#[provider(interval = "3s")]
+/// Test provider with interval + intelligent cache management
+#[provider(interval = "3s", cache_expiration = "15s")]
 async fn fetch_live_data() -> Result<String, String> {
     sleep(Duration::from_millis(500)).await;
     let call_id = CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
     Ok(format!("Live data call #{}", call_id))
 }
 
-/// Test provider with auto-dispose (disposes after 5 seconds of no use)
-#[provider(auto_dispose = true, dispose_delay = "5s")]
-async fn fetch_auto_dispose_data() -> Result<String, String> {
+/// Test provider with intelligent cache management (replaces old auto-dispose)
+#[provider(cache_expiration = "10s")]
+async fn fetch_smart_cached_data() -> Result<String, String> {
     sleep(Duration::from_millis(300)).await;
-    Ok("Auto-dispose data loaded".to_string())
+    let call_id = CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
+    Ok(format!("Smart cached data call #{}", call_id))
 }
 
-/// Test provider with SWR (stale-while-revalidate after 2 seconds)
-#[provider(stale_time = "2s")]
+/// Test provider with SWR + intelligent cache management
+#[provider(stale_time = "2s", cache_expiration = "12s")]
 async fn fetch_swr_data() -> Result<String, String> {
     sleep(Duration::from_millis(800)).await;
     let call_id = CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -62,14 +63,14 @@ async fn fetch_cached_data() -> Result<String, String> {
 fn FeatureTest() -> Element {
     // Initialize all providers
     let live_data = use_provider(fetch_live_data, ());
-    let auto_dispose_data = use_provider(fetch_auto_dispose_data, ());
+    let smart_cached_data = use_provider(fetch_smart_cached_data, ());
     let swr_data = use_provider(fetch_swr_data, ());
     let cached_data = use_provider(fetch_cached_data, ());
 
     // Get refresh functions for manual testing
-    let refresh_live = use_invalidate_provider(fetch_live_data, ());
-    let refresh_swr = use_invalidate_provider(fetch_swr_data, ());
-    let refresh_cached = use_invalidate_provider(fetch_cached_data, ());
+    let _refresh_live = use_invalidate_provider(fetch_live_data, ());
+    let _refresh_swr = use_invalidate_provider(fetch_swr_data, ());
+    let _refresh_cached = use_invalidate_provider(fetch_cached_data, ());
 
     rsx! {
         div { class: "container",
@@ -87,10 +88,10 @@ fn FeatureTest() -> Element {
                         show_refresh: Some(false),
                     }
                     FeatureCard {
-                        title: "Auto-Dispose Provider".to_string(),
-                        description: "Automatically cleans up from memory when not in use for 5 seconds.".to_string(),
-                        observation: "Toggle visibility and watch memory cleanup after 5s.".to_string(),
-                        data: auto_dispose_data, // Fixed signal name
+                        title: "Smart Cache Provider".to_string(),
+                        description: "Intelligent cache management with automatic cleanup after 10 seconds.".to_string(),
+                        observation: "Data automatically expires and refreshes based on access patterns.".to_string(),
+                        data: smart_cached_data, // Fixed signal name
                         show_refresh: Some(false),
                     }
                     FeatureCard {
@@ -147,7 +148,7 @@ fn FeatureCard(
         _ => "⚡",
     };
 
-    let card_id = title
+    let _card_id = title
         .chars()
         .filter(|c| c.is_ascii_alphabetic())
         .collect::<String>()

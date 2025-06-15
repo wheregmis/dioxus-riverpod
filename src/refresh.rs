@@ -41,6 +41,8 @@ pub enum TaskType {
     IntervalRefresh,
     /// Stale checking task that monitors for stale data and triggers revalidation
     StaleCheck,
+    /// Cache cleanup task that removes unused entries and enforces size limits
+    CacheCleanup,
 }
 
 /// Registry for periodic tasks (intervals and stale checks)

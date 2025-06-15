@@ -111,6 +111,24 @@ impl CacheEntry {
     pub fn reference_count(&self) -> u32 {
         self.reference_count.load(Ordering::SeqCst)
     }
+
+    /// Check if this entry hasn't been accessed for the given duration
+    pub fn is_unused_for(&self, duration: Duration) -> bool {
+        if let Ok(last_accessed) = self.last_accessed.lock() {
+            last_accessed.elapsed() > duration
+        } else {
+            false
+        }
+    }
+
+    /// Get the time since this entry was last accessed
+    pub fn time_since_last_access(&self) -> Duration {
+        if let Ok(last_accessed) = self.last_accessed.lock() {
+            last_accessed.elapsed()
+        } else {
+            Duration::from_secs(0)
+        }
+    }
 }
 
 /// Global cache for provider results with automatic cleanup
@@ -218,6 +236,70 @@ impl ProviderCache {
     pub fn clear(&self) {
         if let Ok(mut cache) = self.cache.lock() {
             cache.clear();
+        }
+    }
+
+    /// Get the current cache size (number of entries)
+    pub fn size(&self) -> usize {
+        if let Ok(cache) = self.cache.lock() {
+            cache.len()
+        } else {
+            0
+        }
+    }
+
+    /// Remove entries that haven't been accessed for the specified duration
+    /// Returns the number of entries removed
+    pub fn cleanup_unused_entries(&self, unused_threshold: Duration) -> usize {
+        if let Ok(mut cache) = self.cache.lock() {
+            let keys_to_remove: Vec<String> = cache
+                .iter()
+                .filter(|(_, entry)| entry.is_unused_for(unused_threshold))
+                .map(|(key, _)| key.clone())
+                .collect();
+
+            let removed_count = keys_to_remove.len();
+            for key in keys_to_remove {
+                cache.remove(&key);
+                debug!("🧹 [CLEANUP] Removed unused cache entry: {}", key);
+            }
+
+            removed_count
+        } else {
+            0
+        }
+    }
+
+    /// Remove the least recently used entries until cache size is under the limit
+    /// Returns the number of entries removed
+    pub fn evict_lru_entries(&self, max_size: usize) -> usize {
+        if let Ok(mut cache) = self.cache.lock() {
+            if cache.len() <= max_size {
+                return 0;
+            }
+
+            // Collect entries with their last access times
+            let mut entries_with_access_time: Vec<(String, Duration)> = cache
+                .iter()
+                .map(|(key, entry)| (key.clone(), entry.time_since_last_access()))
+                .collect();
+
+            // Sort by access time (oldest first)
+            entries_with_access_time.sort_by(|a, b| b.1.cmp(&a.1));
+
+            // Remove oldest entries until we're under the limit
+            let entries_to_remove = cache.len() - max_size;
+            let mut removed_count = 0;
+
+            for (key, _) in entries_with_access_time.iter().take(entries_to_remove) {
+                cache.remove(key);
+                removed_count += 1;
+                debug!("🗑️ [LRU-EVICT] Removed LRU cache entry: {}", key);
+            }
+
+            removed_count
+        } else {
+            0
         }
     }
 }

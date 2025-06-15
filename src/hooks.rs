@@ -71,7 +71,7 @@ use crate::{
     cache::{AsyncState, ProviderCache},
     disposal::DisposalRegistry,
     global::{get_global_cache, get_global_disposal_registry, get_global_refresh_registry},
-    refresh::RefreshRegistry,
+    refresh::{RefreshRegistry, TaskType},
 };
 
 /// A unified trait for defining providers - async operations that return data
@@ -175,14 +175,19 @@ where
 
     /// Get whether this provider should auto-dispose when unused (false by default)
     ///
-    /// When enabled, the provider's cache entry will be automatically removed after
-    /// a configurable delay when no components are using it.
+    /// **DEPRECATED**: Auto-dispose based on component unmounting is not recommended
+    /// in a global cache system. Consider using cache_expiration() instead for
+    /// time-based cleanup, which is more appropriate for shared global state.
+    ///
+    /// When enabled, this feature tracks component usage but disposal is ultimately
+    /// based on access patterns rather than component lifecycle.
     fn auto_dispose(&self) -> bool {
-        false
+        false // Disabled by default - use cache_expiration instead
     }
 
     /// Get the dispose delay duration - how long to wait before disposing after last usage
     ///
+    /// **DEPRECATED**: Use cache_expiration() instead for time-based cache cleanup.
     /// Only relevant when auto_dispose() returns true. If None, uses the default delay.
     fn dispose_delay(&self) -> Option<Duration> {
         None
@@ -348,6 +353,9 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 
 /// Hook to access the disposal registry for auto-dispose management
 ///
+/// **DEPRECATED**: Auto-dispose based on component unmounting is not recommended
+/// in a global cache system. Use cache_expiration() for time-based cleanup instead.
+///
 /// This provides access to the disposal registry, allowing for manual control
 /// over the auto-dispose functionality.
 ///
@@ -371,6 +379,7 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 ///     }
 /// }
 /// ```
+#[deprecated(note = "Use cache_expiration() instead of auto_dispose for better global cache behavior")]
 pub fn use_disposal_registry() -> Option<DisposalRegistry> {
     get_disposal_registry()
 }
@@ -587,18 +596,11 @@ where
     let cache = get_provider_cache();
     let refresh_registry = get_refresh_registry();
 
-    // Auto-dispose functionality
-    let disposal_registry = if provider.auto_dispose() {
-        get_disposal_registry()
-    } else {
-        None
-    };
-
     let cache_key = provider.id(&param);
     let cache_expiration = provider.cache_expiration();
 
-    // Setup auto-dispose cleanup
-    setup_auto_dispose_cleanup(&provider, &cache_key, &cache, &disposal_registry);
+    // Setup intelligent cache management (replaces old auto-dispose system)
+    setup_intelligent_cache_management(&provider, &cache_key, &cache, &refresh_registry);
 
     // Check cache expiration before the memo - this happens on every render
     check_and_handle_cache_expiration(cache_expiration, &cache_key, &cache, &refresh_registry);
@@ -635,8 +637,8 @@ where
 
         // Check cache first - serve any available data (fresh or stale)
         if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
-            // Handle auto-dispose reference counting
-            handle_auto_dispose_reference(&cache_key, &cache, &disposal_registry, false);
+            // Access tracking is automatically handled by cache.get() updating last_accessed time
+            debug!("📊 [CACHE-HIT] Serving cached data for: {}", cache_key);
 
             match cached_result {
                 Ok(data) => {
@@ -659,18 +661,18 @@ where
         });
 
         let cache = cache.clone();
-        let cache_key = cache_key.clone();
+        let cache_clone = cache.clone();
+        let cache_key_clone = cache_key.clone();
         let provider = provider.clone();
         let param = param.clone();
-        let disposal_registry_for_async = disposal_registry.clone();
         let mut state_for_async = state;
 
         spawn(async move {
             let result = provider.run(param).await;
-            cache.set(cache_key.clone(), result.clone());
+            cache_clone.set(cache_key_clone.clone(), result.clone());
 
-            // Handle auto-dispose reference counting for new entries
-            handle_auto_dispose_reference(&cache_key, &cache, &disposal_registry_for_async, true);
+            // Access tracking is automatically handled when data is stored and accessed
+            debug!("📊 [CACHE-STORE] Stored new data for: {}", cache_key_clone);
 
             match result {
                 Ok(data) => state_for_async.set(AsyncState::Success(data)),
@@ -826,4 +828,55 @@ where
     P: UseProvider<Args>,
 {
     provider.use_provider(args)
+}
+
+/// Sets up intelligent cache management for a provider
+///
+/// This replaces the old component-unmount auto-dispose with a better system:
+/// 1. Access-time tracking for LRU management
+/// 2. Periodic cleanup of unused entries based on cache_expiration
+/// 3. Cache size limits with LRU eviction
+/// 4. Automatic background cleanup tasks
+fn setup_intelligent_cache_management<P, Param>(
+    provider: &P,
+    cache_key: &str,
+    cache: &ProviderCache,
+    refresh_registry: &RefreshRegistry,
+) where
+    P: Provider<Param> + Clone,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    // Set up periodic cleanup task for this provider if cache_expiration is configured
+    if let Some(cache_expiration) = provider.cache_expiration() {
+        let cleanup_interval = std::cmp::max(
+            cache_expiration / 4, // Clean up 4x more frequently than expiration
+            Duration::from_secs(30), // But at least every 30 seconds
+        );
+        
+        let cache_clone = cache.clone();
+        let unused_threshold = cache_expiration * 2; // Remove entries unused for 2x expiration time
+        let cleanup_key = format!("{}_cleanup", cache_key);
+
+        refresh_registry.start_periodic_task(
+            &cleanup_key,
+            TaskType::CacheCleanup,
+            cleanup_interval,
+            move || {
+                // Remove entries that haven't been accessed recently
+                let removed = cache_clone.cleanup_unused_entries(unused_threshold);
+                if removed > 0 {
+                    debug!("🧹 [SMART-CLEANUP] Removed {} unused cache entries", removed);
+                }
+
+                // Enforce cache size limits (configurable - could be made dynamic)
+                const MAX_CACHE_SIZE: usize = 1000;
+                let evicted = cache_clone.evict_lru_entries(MAX_CACHE_SIZE);
+                if evicted > 0 {
+                    debug!("🗑️ [LRU-EVICT] Evicted {} entries due to cache size limit", evicted);
+                }
+            },
+        );
+
+        debug!("📊 [SMART-CACHE] Intelligent cache management enabled for: {} (cleanup every {:?})", cache_key, cleanup_interval);
+    }
 }

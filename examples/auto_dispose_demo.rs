@@ -1,19 +1,19 @@
-//! # Auto-Dispose Demo
+//! # Intelligent Cache Management Demo
 //!
-//! This example demonstrates the auto-dispose functionality in dioxus-riverpod.
-//! Auto-dispose automatically cleans up providers from memory when they haven't
-//! been used for a specified duration, helping prevent memory leaks in dynamic UIs.
+//! This example demonstrates the intelligent cache management functionality in dioxus-riverpod.
+//! The new system provides automatic cache cleanup based on LRU (Least Recently Used) policy
+//! and time-based expiration, replacing the old auto-dispose system.
 //!
 //! **Updated to use Global Providers**: This example now uses the new global provider
 //! system for simplified setup. No RiverpodProvider wrapper component needed!
 //!
 //! ## Key Features Demonstrated:
-//! - Automatic disposal when providers are unused
-//! - Configurable disposal delays
-//! - Memory cleanup tracking
-//! - Component mounting/unmounting effects
+//! - Intelligent cache expiration with configurable times
+//! - LRU-based cleanup when cache grows too large
+//! - Access-based tracking for optimal memory usage
+//! - Background cleanup tasks
 //! - Resource lifecycle management
-//! - Global provider management (NEW!)
+//! - Global provider management
 
 use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
@@ -38,8 +38,8 @@ use wasmtimer::tokio::sleep;
 static CREATION_COUNTER: AtomicU32 = AtomicU32::new(0);
 static ACTIVE_PROVIDERS: AtomicU32 = AtomicU32::new(0);
 
-/// Quick auto-dispose provider - disposes after 3 seconds of no use
-#[provider(auto_dispose = true, dispose_delay = "3s")]
+/// Fast expiring cache provider - expires after 3 seconds
+#[provider(cache_expiration = "3s")]
 async fn fetch_quick_dispose_data() -> Result<QuickDisposeData, String> {
     let creation_id = CREATION_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     let active_count = ACTIVE_PROVIDERS.fetch_add(1, Ordering::SeqCst) + 1;
@@ -61,8 +61,8 @@ async fn fetch_quick_dispose_data() -> Result<QuickDisposeData, String> {
     })
 }
 
-/// Medium auto-dispose provider - disposes after 8 seconds of no use
-#[provider(auto_dispose = true, dispose_delay = "8s")]
+/// Medium expiring cache provider - expires after 8 seconds
+#[provider(cache_expiration = "8s")]
 async fn fetch_medium_dispose_data() -> Result<MediumDisposeData, String> {
     let creation_id = CREATION_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     let active_count = ACTIVE_PROVIDERS.fetch_add(1, Ordering::SeqCst) + 1;
@@ -85,8 +85,8 @@ async fn fetch_medium_dispose_data() -> Result<MediumDisposeData, String> {
     })
 }
 
-/// Parameterized auto-dispose provider - user-specific data that auto-disposes
-#[provider(auto_dispose = true, dispose_delay = "5s")]
+/// Parameterized cache provider - user-specific data with cache expiration
+#[provider(cache_expiration = "5s")]
 async fn fetch_user_session_data(user_id: u32) -> Result<UserSessionData, String> {
     let creation_id = CREATION_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     let active_count = ACTIVE_PROVIDERS.fetch_add(1, Ordering::SeqCst) + 1;
@@ -111,8 +111,8 @@ async fn fetch_user_session_data(user_id: u32) -> Result<UserSessionData, String
     })
 }
 
-/// Heavy resource provider - simulates expensive resources that should be cleaned up
-#[provider(auto_dispose = true, dispose_delay = "6s")]
+/// Heavy resource provider - simulates expensive resources with cache expiration
+#[provider(cache_expiration = "6s")]
 async fn fetch_heavy_resource() -> Result<HeavyResource, String> {
     let creation_id = CREATION_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     let active_count = ACTIVE_PROVIDERS.fetch_add(1, Ordering::SeqCst) + 1;
@@ -229,9 +229,9 @@ fn AutoDisposeDemo() -> Element {
     rsx! {
         div { class: "auto-dispose-demo",
             header { class: "demo-header",
-                h1 { "🗑️ Auto-Dispose Demo" }
+                h1 { "🧠 Intelligent Cache Management Demo" }
                 p { class: "demo-description",
-                    "Auto-dispose automatically cleans up unused providers to prevent memory leaks."
+                    "Intelligent cache management automatically cleans up expired and least-recently-used providers to optimize memory usage."
                 }
                 div { class: "dispose-times-info",
                     span { class: "dispose-badge quick", "Quick: 3s" }
@@ -246,7 +246,7 @@ fn AutoDisposeDemo() -> Element {
             }
 
             div { class: "demo-controls",
-                h3 { "Toggle Components (to test auto-dispose):" }
+                h3 { "Toggle Components (to test cache management):" }
                 div { class: "toggle-grid",
                     ToggleControl {
                         label: "Quick Dispose Component",
@@ -324,7 +324,7 @@ fn AutoDisposeDemo() -> Element {
             }
 
             div { class: "dispose-explanation",
-                h3 { "🧠 Auto-Dispose Behavior" }
+                h3 { "🧠 Intelligent Cache Behavior" }
                 div { class: "explanation-grid",
                     div { class: "explanation-card",
                         h4 { "Component Mount" }
@@ -356,7 +356,7 @@ fn AutoDisposeDemo() -> Element {
 
             footer { class: "demo-footer",
                 p { class: "instructions",
-                    "💡 Toggle components off and watch them auto-dispose after their delay periods!"
+                    "💡 Toggle components off and watch cache entries expire after their configured times!"
                 }
             }
         }
