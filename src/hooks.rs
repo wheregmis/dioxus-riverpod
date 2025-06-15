@@ -27,12 +27,7 @@
 //! ```
 
 use dioxus_lib::prelude::*;
-use std::{
-    fmt::Debug,
-    future::Future,
-    hash::Hash,
-    time::Duration,
-};
+use std::{fmt::Debug, future::Future, hash::Hash, time::Duration};
 use tracing::debug;
 
 use crate::{
@@ -380,6 +375,7 @@ where
         // Use memo with reactive dependencies to track changes automatically
         let _execution_memo = use_memo(use_reactive!(|provider| {
             let cache_key = provider.id(&());
+            let cache_expiration = provider.cache_expiration();
 
             // Subscribe to refresh events for this cache key if we have a reactive context
             if let Some(reactive_context) = ReactiveContext::current() {
@@ -388,6 +384,14 @@ where
 
             // Read the current refresh count (this makes the memo reactive to changes)
             let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
+
+            // MOVED: Cache expiration check inside reactive memo - this runs on every reactive update
+            check_and_handle_cache_expiration(
+                cache_expiration,
+                &cache_key,
+                &cache,
+                &refresh_registry,
+            );
 
             // Set up interval task if provider has interval configured
             if let Some(interval) = provider.interval() {
@@ -604,6 +608,7 @@ where
         // Use memo with reactive dependencies to track changes automatically
         let _execution_memo = use_memo(use_reactive!(|provider, param| {
             let cache_key = provider.id(&param);
+            let cache_expiration = provider.cache_expiration();
 
             // Subscribe to refresh events for this cache key if we have a reactive context
             if let Some(reactive_context) = ReactiveContext::current() {
@@ -612,6 +617,14 @@ where
 
             // Read the current refresh count (this makes the memo reactive to changes)
             let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
+
+            // MOVED: Cache expiration check inside reactive memo - this runs on every reactive update
+            check_and_handle_cache_expiration(
+                cache_expiration,
+                &cache_key,
+                &cache,
+                &refresh_registry,
+            );
 
             // Set up interval task if provider has interval configured
             if let Some(interval) = provider.interval() {
@@ -751,6 +764,30 @@ where
         }));
 
         state
+    }
+}
+
+/// Shared cache expiration logic
+fn check_and_handle_cache_expiration(
+    cache_expiration: Option<Duration>,
+    cache_key: &str,
+    cache: &ProviderCache,
+    refresh_registry: &RefreshRegistry,
+) {
+    if let Some(expiration) = cache_expiration {
+        if let Ok(mut cache_lock) = cache.cache.lock() {
+            if let Some(entry) = cache_lock.get(cache_key) {
+                if entry.is_expired(expiration) {
+                    debug!(
+                        "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
+                        cache_key
+                    );
+                    cache_lock.remove(cache_key);
+                    // Trigger a refresh to re-execute the provider
+                    refresh_registry.trigger_refresh(cache_key);
+                }
+            }
+        }
     }
 }
 
