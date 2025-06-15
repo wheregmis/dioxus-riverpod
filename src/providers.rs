@@ -54,11 +54,10 @@
 // Re-export all types and functionality from specialized modules
 pub use crate::{
     cache::{AsyncState, ProviderCache},
-    disposal::DisposalRegistry,
     hooks::{
         Provider, UseProvider,
         use_provider, use_provider_cache, use_invalidate_provider, 
-        use_clear_provider_cache, use_disposal_registry
+        use_clear_provider_cache
     },
     refresh::RefreshRegistry,
     types::{ReactiveContext, ReactiveContextSet, ReactiveContextRegistry, IntervalTaskRegistry},

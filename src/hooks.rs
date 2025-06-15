@@ -69,8 +69,7 @@ use tracing::debug;
 
 use crate::{
     cache::{AsyncState, ProviderCache},
-    disposal::DisposalRegistry,
-    global::{get_global_cache, get_global_disposal_registry, get_global_refresh_registry},
+    global::{get_global_cache, get_global_refresh_registry},
     refresh::{RefreshRegistry, TaskType},
 };
 
@@ -172,26 +171,6 @@ where
     fn stale_time(&self) -> Option<Duration> {
         None
     }
-
-    /// Get whether this provider should auto-dispose when unused (false by default)
-    ///
-    /// **DEPRECATED**: Auto-dispose based on component unmounting is not recommended
-    /// in a global cache system. Consider using cache_expiration() instead for
-    /// time-based cleanup, which is more appropriate for shared global state.
-    ///
-    /// When enabled, this feature tracks component usage but disposal is ultimately
-    /// based on access patterns rather than component lifecycle.
-    fn auto_dispose(&self) -> bool {
-        false // Disabled by default - use cache_expiration instead
-    }
-
-    /// Get the dispose delay duration - how long to wait before disposing after last usage
-    ///
-    /// **DEPRECATED**: Use cache_expiration() instead for time-based cache cleanup.
-    /// Only relevant when auto_dispose() returns true. If None, uses the default delay.
-    fn dispose_delay(&self) -> Option<Duration> {
-        None
-    }
 }
 
 /// Get the provider cache - requires global providers to be initialized
@@ -202,11 +181,6 @@ fn get_provider_cache() -> ProviderCache {
 /// Get the refresh registry - requires global providers to be initialized
 fn get_refresh_registry() -> RefreshRegistry {
     get_global_refresh_registry().clone()
-}
-
-/// Get the disposal registry - requires global providers to be initialized
-fn get_disposal_registry() -> Option<DisposalRegistry> {
-    Some(get_global_disposal_registry().clone())
 }
 
 /// Hook to access the provider cache for manual cache management
@@ -360,29 +334,6 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 /// over the auto-dispose functionality.
 ///
 /// Requires global providers to be initialized with `init_global_providers()`.
-///
-/// ## Example
-///
-/// ```rust,no_run
-/// use dioxus::prelude::*;
-/// use dioxus_riverpod::prelude::*;
-///
-/// #[component]
-/// fn MyComponent() -> Element {
-///     if let Some(disposal_registry) = use_disposal_registry() {
-///         // Manually cancel disposal for a specific provider
-///         disposal_registry.cancel_disposal("my_provider_key");
-///     }
-///     
-///     rsx! {
-///         div { "Disposal management example" }
-///     }
-/// }
-/// ```
-#[deprecated(note = "Use cache_expiration() instead of auto_dispose for better global cache behavior")]
-pub fn use_disposal_registry() -> Option<DisposalRegistry> {
-    get_disposal_registry()
-}
 
 /// Trait for unified provider usage - automatically handles providers with and without parameters
 ///
@@ -399,71 +350,6 @@ pub trait UseProvider<Args> {
 }
 
 // Helper functions for common provider operations
-
-/// Sets up auto-dispose cleanup for a provider
-fn setup_auto_dispose_cleanup<P, Param>(
-    provider: &P,
-    cache_key: &str,
-    cache: &ProviderCache,
-    disposal_registry: &Option<DisposalRegistry>,
-) where
-    P: Provider<Param> + Clone,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
-{
-    if let Some(disposal_reg) = disposal_registry {
-        let cache_key_for_cleanup = cache_key.to_string();
-        let provider_for_cleanup = provider.clone();
-        let disposal_registry_for_cleanup = disposal_reg.clone();
-        let cache_for_cleanup = cache.clone();
-
-        use_drop(move || {
-            // Find and decrement reference count for the cache entry
-            if let Ok(cache_lock) = cache_for_cleanup.cache.lock() {
-                if let Some(entry) = cache_lock.get(&cache_key_for_cleanup) {
-                    entry.remove_reference();
-                    debug!(
-                        "🔄 [AUTO-DISPOSE] Removed reference for: {} (refs: {})",
-                        cache_key_for_cleanup,
-                        entry.reference_count()
-                    );
-                }
-            }
-
-            // Schedule disposal after the specified delay
-            let dispose_delay = provider_for_cleanup
-                .dispose_delay()
-                .unwrap_or_else(DisposalRegistry::default_dispose_delay);
-            disposal_registry_for_cleanup
-                .schedule_disposal(cache_key_for_cleanup.clone(), dispose_delay);
-        });
-    }
-}
-
-/// Handles auto-dispose reference counting for cache entries
-fn handle_auto_dispose_reference(
-    cache_key: &str,
-    cache: &ProviderCache,
-    disposal_registry: &Option<DisposalRegistry>,
-    is_new_entry: bool,
-) {
-    if let Some(disposal_reg) = disposal_registry {
-        disposal_reg.cancel_disposal(cache_key);
-
-        // Add reference count for this component using the cache entry
-        if let Ok(cache_lock) = cache.cache.lock() {
-            if let Some(entry) = cache_lock.get(cache_key) {
-                entry.add_reference();
-                let action = if is_new_entry { "new entry" } else { "" };
-                debug!(
-                    "🔄 [AUTO-DISPOSE] Added reference for {}: {} (refs: {})",
-                    action,
-                    cache_key,
-                    entry.reference_count()
-                );
-            }
-        }
-    }
-}
 
 /// Performs SWR staleness checking and triggers background revalidation if needed
 fn check_and_handle_swr_core<P, Param>(

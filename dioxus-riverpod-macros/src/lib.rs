@@ -15,8 +15,6 @@ struct ProviderArgs {
     interval: Option<Duration>,
     cache_expiration: Option<Duration>,
     stale_time: Option<Duration>,
-    auto_dispose: Option<bool>,
-    dispose_delay: Option<Duration>,
     inject: Vec<syn::Type>, // New: list of types to inject
 }
 
@@ -52,18 +50,6 @@ impl Parse for ProviderArgs {
                         syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
                     })?;
                     args.stale_time = Some(duration);
-                }
-                "auto_dispose" => {
-                    let lit: syn::LitBool = input.parse()?;
-                    args.auto_dispose = Some(lit.value);
-                }
-                "dispose_delay" => {
-                    let lit: LitStr = input.parse()?;
-                    let duration_str = lit.value();
-                    let duration = humantime::parse_duration(&duration_str).map_err(|e| {
-                        syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
-                    })?;
-                    args.dispose_delay = Some(duration);
                 }
                 "inject" => {
                     // Parse injection types: inject = [Type1, Type2, ...]
@@ -151,8 +137,6 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
     let interval_impl = generate_interval_impl(&provider_args);
     let cache_expiration_impl = generate_cache_expiration_impl(&provider_args);
     let stale_time_impl = generate_stale_time_impl(&provider_args);
-    let auto_dispose_impl = generate_auto_dispose_impl(&provider_args);
-    let dispose_delay_impl = generate_dispose_delay_impl(&provider_args);
 
     // Generate common struct and const
     let common_struct = generate_common_struct_and_const(&info);
@@ -184,8 +168,6 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                 #interval_impl
                 #cache_expiration_impl
                 #stale_time_impl
-                #auto_dispose_impl
-                #dispose_delay_impl
             }
         })
     } else {
@@ -222,8 +204,6 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                     #interval_impl
                     #cache_expiration_impl
                     #stale_time_impl
-                    #auto_dispose_impl
-                    #dispose_delay_impl
                 }
             })
         } else {
@@ -259,8 +239,6 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                     #interval_impl
                     #cache_expiration_impl
                     #stale_time_impl
-                    #auto_dispose_impl
-                    #dispose_delay_impl
                 }
             })
         }
@@ -296,26 +274,6 @@ fn generate_cache_expiration_impl(provider_args: &ProviderArgs) -> TokenStream2 
 
 fn generate_stale_time_impl(provider_args: &ProviderArgs) -> TokenStream2 {
     generate_duration_impl("stale_time", provider_args.stale_time)
-}
-
-fn generate_auto_dispose_impl(provider_args: &ProviderArgs) -> TokenStream2 {
-    match provider_args.auto_dispose {
-        Some(true) => quote! {
-            fn auto_dispose(&self) -> bool {
-                true
-            }
-        },
-        Some(false) => quote! {
-            fn auto_dispose(&self) -> bool {
-                false
-            }
-        },
-        None => quote! {},
-    }
-}
-
-fn generate_dispose_delay_impl(provider_args: &ProviderArgs) -> TokenStream2 {
-    generate_duration_impl("dispose_delay", provider_args.dispose_delay)
 }
 
 struct ProviderInfo {
