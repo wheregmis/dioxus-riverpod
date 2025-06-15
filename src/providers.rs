@@ -58,7 +58,18 @@ use std::{
     time::Duration,
 };
 use tokio::task::JoinHandle;
+use dioxus_lib::prelude::Task;
 use tracing::debug;
+
+#[cfg(not(target_family = "wasm"))]
+use std::time::Instant;
+#[cfg(target_family = "wasm")]
+use web_time::Instant;
+
+#[cfg(not(target_family = "wasm"))]
+use tokio::time;
+#[cfg(target_family = "wasm")]
+use wasmtimer::tokio as time;
 
 //
 // ============================================================================
@@ -158,10 +169,12 @@ impl RefreshRegistry {
                 }
             };
 
+            // WASM compatibility: disable background interval tasks in WASM
+            #[cfg(not(target_family = "wasm"))]
             if should_create_new_task {
                 let task = tokio::spawn(async move {
-                    let mut interval_timer = tokio::time::interval(interval);
-                    interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                    let mut interval_timer = time::interval(interval);
+                    interval_timer.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
                     // Skip the first tick (immediate execution)
                     interval_timer.tick().await;
@@ -270,14 +283,14 @@ impl<T, E> AsyncState<T, E> {
 #[derive(Clone)]
 struct CacheEntry {
     data: Arc<dyn Any + Send + Sync>,
-    cached_at: std::time::Instant,
+    cached_at: Instant,
     reference_count: Arc<std::sync::atomic::AtomicU32>,
-    last_accessed: Arc<Mutex<std::time::Instant>>,
+    last_accessed: Arc<Mutex<Instant>>,
 }
 
 impl CacheEntry {
     fn new<T: Clone + Send + Sync + 'static>(data: T) -> Self {
-        let now = std::time::Instant::now();
+        let now = Instant::now();
         Self {
             data: Arc::new(data),
             cached_at: now,
@@ -289,7 +302,7 @@ impl CacheEntry {
     fn get<T: Clone + Send + Sync + 'static>(&self) -> Option<T> {
         // Update last accessed time
         if let Ok(mut last_accessed) = self.last_accessed.lock() {
-            *last_accessed = std::time::Instant::now();
+            *last_accessed = Instant::now();
         }
         self.data.downcast_ref::<T>().cloned()
     }
@@ -663,7 +676,7 @@ where
                     let cache_key_for_task = cache_key_clone.clone();
                     let refresh_registry_for_task = refresh_registry_clone.clone();
 
-                    tokio::spawn(async move {
+                    spawn(async move {
                         let result = provider_for_task.run(()).await;
                         cache_for_task.set(cache_key_for_task.clone(), result);
 
@@ -889,7 +902,7 @@ where
                     let cache_key_for_task = cache_key_clone.clone();
                     let refresh_registry_for_task = refresh_registry_clone.clone();
 
-                    tokio::spawn(async move {
+                    spawn(async move {
                         let result = provider_for_task.run(param_for_task).await;
                         cache_for_task.set(cache_key_for_task.clone(), result);
 
@@ -1057,6 +1070,8 @@ impl DisposalRegistry {
 
     /// Schedule disposal of a provider after the specified delay
     pub fn schedule_disposal(&self, cache_key: String, dispose_delay: Duration) {
+        // WASM compatibility: disable auto-disposal in WASM
+        #[cfg(not(target_family = "wasm"))]
         if let (Ok(mut timers), Some(cache)) = (self.disposal_timers.lock(), &self.cache) {
             // Cancel existing timer if present
             if let Some(existing_timer) = timers.remove(&cache_key) {
@@ -1067,7 +1082,7 @@ impl DisposalRegistry {
             let cache_key_clone = cache_key.clone();
 
             let timer = tokio::spawn(async move {
-                tokio::time::sleep(dispose_delay).await;
+                time::sleep(dispose_delay).await;
 
                 // Check if the provider can still be disposed
                 // After waiting dispose_delay, if entry exists and has no references, dispose it
@@ -1090,15 +1105,28 @@ impl DisposalRegistry {
 
             timers.insert(cache_key, timer);
         }
+        
+        // In WASM, auto-disposal is disabled for compatibility
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = (cache_key, dispose_delay); // Silence unused variable warnings
+        }
     }
 
     /// Cancel disposal timer for a provider (called when provider is accessed again)
     pub fn cancel_disposal(&self, cache_key: &str) {
+        #[cfg(not(target_family = "wasm"))]
         if let Ok(mut timers) = self.disposal_timers.lock() {
             if let Some(timer) = timers.remove(cache_key) {
                 timer.abort();
                 debug!("🔄 [AUTO-DISPOSE] Cancelled disposal for: {}", cache_key);
             }
+        }
+        
+        // In WASM, auto-disposal is disabled for compatibility
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = cache_key; // Silence unused variable warning
         }
     }
 

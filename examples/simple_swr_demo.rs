@@ -2,7 +2,12 @@ use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
+use tracing::info;
+
+#[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
+#[cfg(target_family = "wasm")]
+use wasmtimer::tokio::sleep;
 
 /// Global counter to track API call count for demonstration
 static API_CALL_COUNT: AtomicU32 = AtomicU32::new(0);
@@ -28,7 +33,7 @@ struct ApiError(String);
 #[provider(stale_time = "5s")]
 async fn fetch_user_swr_only() -> Result<UserData, ApiError> {
     let call_number = API_CALL_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    println!("🌐 [SWR] API call #{} starting...", call_number);
+    info!("🌐 [SWR] API call #{} starting...", call_number);
 
     sleep(Duration::from_millis(1500)).await;
 
@@ -42,7 +47,7 @@ async fn fetch_user_swr_only() -> Result<UserData, ApiError> {
         let seconds = timestamp % 60;
         format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
     };
-    println!("✅ [SWR] API call #{} completed at {}", call_number, now);
+    info!("✅ [SWR] API call #{} completed at {}", call_number, now);
 
     Ok(UserData {
         id: 1,
@@ -60,7 +65,7 @@ async fn fetch_user_swr_only() -> Result<UserData, ApiError> {
 #[provider(cache_expiration = "8s")]
 async fn fetch_user_traditional() -> Result<UserData, ApiError> {
     let call_number = API_CALL_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    println!("🗄️ [TRADITIONAL] API call #{} starting...", call_number);
+    info!("🗄️ [TRADITIONAL] API call #{} starting...", call_number);
 
     sleep(Duration::from_millis(1500)).await;
 
@@ -74,7 +79,7 @@ async fn fetch_user_traditional() -> Result<UserData, ApiError> {
         let seconds = timestamp % 60;
         format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
     };
-    println!(
+    info!(
         "✅ [TRADITIONAL] API call #{} completed at {}",
         call_number, now
     );
@@ -95,7 +100,7 @@ async fn fetch_user_traditional() -> Result<UserData, ApiError> {
 #[provider]
 async fn fetch_user_no_cache() -> Result<UserData, ApiError> {
     let call_number = API_CALL_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    println!("🚫 [NO CACHE] API call #{} starting...", call_number);
+    info!("🚫 [NO CACHE] API call #{} starting...", call_number);
 
     sleep(Duration::from_millis(1500)).await;
 
@@ -109,7 +114,7 @@ async fn fetch_user_no_cache() -> Result<UserData, ApiError> {
         let seconds = timestamp % 60;
         format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
     };
-    println!(
+    info!(
         "✅ [NO CACHE] API call #{} completed at {}",
         call_number, now
     );
