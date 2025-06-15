@@ -87,12 +87,12 @@ use crate::{
 /// - **Auto-Refresh**: Optional automatic refresh at intervals
 /// - **Auto-Dispose**: Automatic cleanup when providers are no longer used
 ///
-/// ## Send + Sync Requirements
+/// ## Cross-Platform Compatibility
 ///
-/// Most types require `Send + Sync` because:
-/// - Data is stored in a global cache shared across the application
-/// - Background tasks and intervals need to send data between threads
-/// - The Future from `run()` doesn't need `+ Send` since we use Dioxus's spawn
+/// The Provider trait is designed to work across platforms using Dioxus's spawn system:
+/// - Uses `dioxus::spawn` for async execution (no Send + Sync required for most types)
+/// - Parameters may need Send + Sync if shared across contexts
+/// - Output and Error types only need Clone since they stay within Dioxus context
 ///
 /// ## Example
 ///
@@ -129,11 +129,11 @@ use crate::{
 /// ```
 pub trait Provider<Param = ()>: Clone + PartialEq + 'static
 where
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: Clone + PartialEq + Hash + Debug + 'static,
 {
     /// The type of data returned on success
     type Output: Clone + PartialEq + Send + Sync + 'static;
-    /// The type of error returned on failure
+    /// The type of error returned on failure  
     type Error: Clone + Send + Sync + 'static;
 
     /// Execute the async operation
@@ -299,7 +299,7 @@ pub fn use_provider_cache() -> ProviderCache {
 pub fn use_invalidate_provider<P, Param>(provider: P, param: Param) -> impl Fn() + Clone
 where
     P: Provider<Param>,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: Clone + PartialEq + Hash + Debug + 'static,
 {
     let cache = get_provider_cache();
     let refresh_registry = get_refresh_registry();

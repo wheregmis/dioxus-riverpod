@@ -7,13 +7,17 @@
 //! **Updated to use Global Providers**: This example now uses the new global provider
 //! system for simplified setup. No RiverpodProvider wrapper component needed!
 //!
+//! **Reactive SWR**: The library now automatically monitors cache entries for staleness
+//! and triggers background revalidation without requiring manual timers or re-renders.
+//!
 //! ## Key Features Demonstrated:
 //! - Stale-while-revalidate pattern with configurable stale time
+//! - Automatic background staleness checking (NEW!)
 //! - Instant data serving from cache
-//! - Background revalidation
+//! - Background revalidation without manual intervention
 //! - Manual refresh functionality
 //! - Loading states and error handling
-//! - Global provider management (NEW!)
+//! - Global provider management
 
 use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
