@@ -18,8 +18,14 @@ use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
 use std::{
     sync::atomic::{AtomicU32, Ordering},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+
+// Cross-platform time imports
+#[cfg(not(target_family = "wasm"))]
+use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(target_family = "wasm")]
+use web_time::{SystemTime, UNIX_EPOCH};
 
 // Cross-platform sleep function
 #[cfg(not(target_family = "wasm"))]

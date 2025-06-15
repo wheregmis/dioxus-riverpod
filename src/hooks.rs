@@ -262,6 +262,260 @@ pub trait UseProvider<Args> {
     fn use_provider(self, args: Args) -> Signal<AsyncState<Self::Output, Self::Error>>;
 }
 
+// Helper functions for common provider operations
+
+/// Sets up auto-dispose cleanup for a provider
+fn setup_auto_dispose_cleanup<P, Param>(
+    provider: &P,
+    cache_key: &str,
+    cache: &ProviderCache,
+    disposal_registry: &Option<DisposalRegistry>,
+) where
+    P: Provider<Param> + Clone,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    if let Some(disposal_reg) = disposal_registry {
+        let cache_key_for_cleanup = cache_key.to_string();
+        let provider_for_cleanup = provider.clone();
+        let disposal_registry_for_cleanup = disposal_reg.clone();
+        let cache_for_cleanup = cache.clone();
+
+        use_drop(move || {
+            // Find and decrement reference count for the cache entry
+            if let Ok(cache_lock) = cache_for_cleanup.cache.lock() {
+                if let Some(entry) = cache_lock.get(&cache_key_for_cleanup) {
+                    entry.remove_reference();
+                    debug!(
+                        "🔄 [AUTO-DISPOSE] Removed reference for: {} (refs: {})",
+                        cache_key_for_cleanup,
+                        entry.reference_count()
+                    );
+                }
+            }
+
+            // Schedule disposal after the specified delay
+            let dispose_delay = provider_for_cleanup
+                .dispose_delay()
+                .unwrap_or_else(DisposalRegistry::default_dispose_delay);
+            disposal_registry_for_cleanup
+                .schedule_disposal(cache_key_for_cleanup.clone(), dispose_delay);
+        });
+    }
+}
+
+/// Handles auto-dispose reference counting for cache entries
+fn handle_auto_dispose_reference(
+    cache_key: &str,
+    cache: &ProviderCache,
+    disposal_registry: &Option<DisposalRegistry>,
+    is_new_entry: bool,
+) {
+    if let Some(disposal_reg) = disposal_registry {
+        disposal_reg.cancel_disposal(cache_key);
+
+        // Add reference count for this component using the cache entry
+        if let Ok(cache_lock) = cache.cache.lock() {
+            if let Some(entry) = cache_lock.get(cache_key) {
+                entry.add_reference();
+                let action = if is_new_entry { "new entry" } else { "" };
+                debug!(
+                    "🔄 [AUTO-DISPOSE] Added reference for {}: {} (refs: {})",
+                    action,
+                    cache_key,
+                    entry.reference_count()
+                );
+            }
+        }
+    }
+}
+
+/// Performs SWR staleness checking and triggers background revalidation if needed
+fn check_and_handle_swr_core<P, Param>(
+    provider: &P,
+    param: &Param,
+    cache_key: &str,
+    cache: &ProviderCache,
+    refresh_registry: &RefreshRegistry,
+) where
+    P: Provider<Param> + Clone,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    let stale_time = provider.stale_time();
+    let cache_expiration = provider.cache_expiration();
+
+    if let Some(stale_duration) = stale_time {
+        if let Ok(cache_lock) = cache.cache.lock() {
+            if let Some(entry) = cache_lock.get(cache_key) {
+                if entry.is_stale(stale_duration)
+                    && !entry.is_expired(cache_expiration.unwrap_or(Duration::from_secs(3600)))
+                    && !refresh_registry.is_revalidation_in_progress(cache_key)
+                {
+                    // Data is stale but not expired and no revalidation in progress - trigger background revalidation
+                    if refresh_registry.start_revalidation(cache_key) {
+                        debug!(
+                            "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
+                            cache_key
+                        );
+
+                        let cache = cache.clone();
+                        let cache_key_clone = cache_key.to_string();
+                        let provider = provider.clone();
+                        let param = param.clone();
+                        let refresh_registry_clone = refresh_registry.clone();
+
+                        spawn(async move {
+                            let result = provider.run(param).await;
+                            cache.set(cache_key_clone.clone(), result);
+
+                            // Mark revalidation as complete and trigger refresh
+                            refresh_registry_clone.complete_revalidation(&cache_key_clone);
+                            refresh_registry_clone.trigger_refresh(&cache_key_clone);
+                            debug!(
+                                "✅ [SWR] Background revalidation completed for key: {}",
+                                cache_key_clone
+                            );
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Sets up interval refresh task for a provider
+fn setup_interval_task_core<P, Param>(
+    provider: &P,
+    param: &Param,
+    cache_key: &str,
+    cache: &ProviderCache,
+    refresh_registry: &RefreshRegistry,
+) where
+    P: Provider<Param> + Clone + Send,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    if let Some(interval) = provider.interval() {
+        let cache_clone = cache.clone();
+        let provider_clone = provider.clone();
+        let param_clone = param.clone();
+        let cache_key_clone = cache_key.to_string();
+        let refresh_registry_clone = refresh_registry.clone();
+
+        refresh_registry.start_interval_task(cache_key, interval, move || {
+            // Re-execute the provider and update cache in background
+            let cache_for_task = cache_clone.clone();
+            let provider_for_task = provider_clone.clone();
+            let param_for_task = param_clone.clone();
+            let cache_key_for_task = cache_key_clone.clone();
+            let refresh_registry_for_task = refresh_registry_clone.clone();
+
+            spawn(async move {
+                let result = provider_for_task.run(param_for_task).await;
+                cache_for_task.set(cache_key_for_task.clone(), result);
+
+                // Trigger refresh to mark reactive contexts as dirty and update UI
+                refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
+            });
+        });
+    }
+}
+
+/// Core provider implementation that handles all the common logic
+fn use_provider_core<P, Param>(provider: P, param: Param) -> Signal<AsyncState<P::Output, P::Error>>
+where
+    P: Provider<Param> + Send + Clone,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    let mut state = use_signal(|| AsyncState::Loading);
+    let cache = use_context::<ProviderCache>();
+    let refresh_registry = use_context::<RefreshRegistry>();
+
+    // Auto-dispose functionality
+    let disposal_registry = if provider.auto_dispose() {
+        Some(use_context::<DisposalRegistry>())
+    } else {
+        None
+    };
+
+    let cache_key = provider.id(&param);
+    let cache_expiration = provider.cache_expiration();
+
+    // Setup auto-dispose cleanup
+    setup_auto_dispose_cleanup(&provider, &cache_key, &cache, &disposal_registry);
+
+    // Check cache expiration before the memo - this happens on every render
+    check_and_handle_cache_expiration(cache_expiration, &cache_key, &cache, &refresh_registry);
+
+    // SWR staleness checking - runs on every render to check for stale data
+    check_and_handle_swr_core(&provider, &param, &cache_key, &cache, &refresh_registry);
+
+    // Use memo with reactive dependencies to track changes automatically
+    let _execution_memo = use_memo(move || {
+        let cache_key = provider.id(&param);
+        let cache_expiration = provider.cache_expiration();
+
+        // Subscribe to refresh events for this cache key if we have a reactive context
+        if let Some(reactive_context) = ReactiveContext::current() {
+            refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
+        }
+
+        // Read the current refresh count (this makes the memo reactive to changes)
+        let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
+
+        // Cache expiration check inside reactive memo - this runs on every reactive update
+        check_and_handle_cache_expiration(cache_expiration, &cache_key, &cache, &refresh_registry);
+
+        // Set up interval task if provider has interval configured
+        setup_interval_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
+
+        // Check cache first - serve any available data (fresh or stale)
+        if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
+            // Handle auto-dispose reference counting
+            handle_auto_dispose_reference(&cache_key, &cache, &disposal_registry, false);
+
+            match cached_result {
+                Ok(data) => {
+                    let _ = spawn(async move {
+                        state.set(AsyncState::Success(data));
+                    });
+                }
+                Err(error) => {
+                    let _ = spawn(async move {
+                        state.set(AsyncState::Error(error));
+                    });
+                }
+            }
+            return;
+        }
+
+        // Cache miss - set loading and spawn async task
+        let _ = spawn(async move {
+            state.set(AsyncState::Loading);
+        });
+
+        let cache = cache.clone();
+        let cache_key = cache_key.clone();
+        let provider = provider.clone();
+        let param = param.clone();
+        let disposal_registry_for_async = disposal_registry.clone();
+        let mut state_for_async = state;
+
+        spawn(async move {
+            let result = provider.run(param).await;
+            cache.set(cache_key.clone(), result.clone());
+
+            // Handle auto-dispose reference counting for new entries
+            handle_auto_dispose_reference(&cache_key, &cache, &disposal_registry_for_async, true);
+
+            match result {
+                Ok(data) => state_for_async.set(AsyncState::Success(data)),
+                Err(error) => state_for_async.set(AsyncState::Error(error)),
+            }
+        });
+    });
+
+    state
+}
+
 /// Implementation for providers with no parameters (simple providers)
 impl<P> UseProvider<()> for P
 where
@@ -271,224 +525,7 @@ where
     type Error = P::Error;
 
     fn use_provider(self, _args: ()) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        let provider = self;
-        let mut state = use_signal(|| AsyncState::Loading);
-        let cache = use_context::<ProviderCache>();
-        let refresh_registry = use_context::<RefreshRegistry>();
-
-        // Auto-dispose functionality
-        let disposal_registry = if provider.auto_dispose() {
-            Some(use_context::<DisposalRegistry>())
-        } else {
-            None
-        };
-
-        // Check cache expiration before the memo - this happens on every render
-        let cache_key = provider.id(&());
-        let cache_expiration = provider.cache_expiration();
-
-        // Store cache key and disposal registry for cleanup
-        let cache_key_for_cleanup = cache_key.clone();
-        let provider_for_cleanup = provider.clone();
-        let disposal_registry_for_cleanup = disposal_registry.clone();
-        let cache_for_cleanup = cache.clone();
-
-        // Component unmount cleanup - remove reference and schedule disposal
-        use_drop(move || {
-            if let Some(disposal_reg) = &disposal_registry_for_cleanup {
-                // Find and decrement reference count for the cache entry
-                if let Ok(cache_lock) = cache_for_cleanup.cache.lock() {
-                    if let Some(entry) = cache_lock.get(&cache_key_for_cleanup) {
-                        entry.remove_reference();
-                        debug!(
-                            "🔄 [AUTO-DISPOSE] Removed reference for: {} (refs: {})",
-                            cache_key_for_cleanup,
-                            entry.reference_count()
-                        );
-                    }
-                }
-
-                // Schedule disposal after the specified delay
-                let dispose_delay = provider_for_cleanup
-                    .dispose_delay()
-                    .unwrap_or_else(DisposalRegistry::default_dispose_delay);
-                disposal_reg.schedule_disposal(cache_key_for_cleanup.clone(), dispose_delay);
-            }
-        });
-
-        // If cache expiration is enabled, check if current cache entry is expired and remove it
-        if let Some(expiration) = cache_expiration {
-            if let Ok(mut cache_lock) = cache.cache.lock() {
-                if let Some(entry) = cache_lock.get(&cache_key) {
-                    if entry.is_expired(expiration) {
-                        debug!(
-                            "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
-                            cache_key
-                        );
-                        cache_lock.remove(&cache_key);
-                        // Trigger a refresh to re-execute the provider
-                        refresh_registry.trigger_refresh(&cache_key);
-                    }
-                }
-            }
-        }
-
-        // SWR staleness checking - runs on every render to check for stale data
-        let stale_time = provider.stale_time();
-        if let Some(stale_duration) = stale_time {
-            if let Ok(cache_lock) = cache.cache.lock() {
-                if let Some(entry) = cache_lock.get(&cache_key) {
-                    if entry.is_stale(stale_duration)
-                        && !entry.is_expired(cache_expiration.unwrap_or(Duration::from_secs(3600)))
-                        && !refresh_registry.is_revalidation_in_progress(&cache_key)
-                    {
-                        // Data is stale but not expired and no revalidation in progress - trigger background revalidation
-                        if refresh_registry.start_revalidation(&cache_key) {
-                            debug!(
-                                "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
-                                cache_key
-                            );
-
-                            let cache = cache.clone();
-                            let cache_key_clone = cache_key.clone();
-                            let provider = provider.clone();
-                            let refresh_registry_clone = refresh_registry.clone();
-
-                            spawn(async move {
-                                let result = provider.run(()).await;
-                                cache.set(cache_key_clone.clone(), result);
-
-                                // Mark revalidation as complete and trigger refresh
-                                refresh_registry_clone.complete_revalidation(&cache_key_clone);
-                                refresh_registry_clone.trigger_refresh(&cache_key_clone);
-                                debug!(
-                                    "✅ [SWR] Background revalidation completed for key: {}",
-                                    cache_key_clone
-                                );
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        // Use memo with reactive dependencies to track changes automatically
-        let _execution_memo = use_memo(use_reactive!(|provider| {
-            let cache_key = provider.id(&());
-            let cache_expiration = provider.cache_expiration();
-
-            // Subscribe to refresh events for this cache key if we have a reactive context
-            if let Some(reactive_context) = ReactiveContext::current() {
-                refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
-            }
-
-            // Read the current refresh count (this makes the memo reactive to changes)
-            let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
-
-            // MOVED: Cache expiration check inside reactive memo - this runs on every reactive update
-            check_and_handle_cache_expiration(
-                cache_expiration,
-                &cache_key,
-                &cache,
-                &refresh_registry,
-            );
-
-            // Set up interval task if provider has interval configured
-            if let Some(interval) = provider.interval() {
-                let cache_clone = cache.clone();
-                let provider_clone = provider.clone();
-                let cache_key_clone = cache_key.clone();
-                let refresh_registry_clone = refresh_registry.clone();
-
-                refresh_registry.start_interval_task(&cache_key, interval, move || {
-                    // Re-execute the provider and update cache in background
-                    let cache_for_task = cache_clone.clone();
-                    let provider_for_task = provider_clone.clone();
-                    let cache_key_for_task = cache_key_clone.clone();
-                    let refresh_registry_for_task = refresh_registry_clone.clone();
-
-                    spawn(async move {
-                        let result = provider_for_task.run(()).await;
-                        cache_for_task.set(cache_key_for_task.clone(), result);
-
-                        // Trigger refresh to mark reactive contexts as dirty and update UI
-                        refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
-                    });
-                });
-            }
-
-            // Check cache first - serve any available data (fresh or stale)
-            let _cache_expiration = provider.cache_expiration();
-            if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
-                // Add reference count and cancel disposal if auto-dispose is enabled
-                if let Some(ref disposal_reg) = disposal_registry {
-                    disposal_reg.cancel_disposal(&cache_key);
-
-                    // Add reference count for this component using the cache entry
-                    if let Ok(cache_lock) = cache.cache.lock() {
-                        if let Some(entry) = cache_lock.get(&cache_key) {
-                            entry.add_reference();
-                            debug!(
-                                "🔄 [AUTO-DISPOSE] Added reference for: {} (refs: {})",
-                                cache_key,
-                                entry.reference_count()
-                            );
-                        }
-                    }
-                }
-
-                match cached_result {
-                    Ok(data) => {
-                        let _ = spawn(async move {
-                            state.set(AsyncState::Success(data));
-                        });
-                    }
-                    Err(error) => {
-                        let _ = spawn(async move {
-                            state.set(AsyncState::Error(error));
-                        });
-                    }
-                }
-                return;
-            }
-
-            // Cache miss - set loading and spawn async task
-            let _ = spawn(async move {
-                state.set(AsyncState::Loading);
-            });
-
-            let cache = cache.clone();
-            let cache_key = cache_key.clone();
-            let provider = provider.clone();
-            let disposal_registry_for_async = disposal_registry.clone();
-            let mut state_for_async = state;
-
-            spawn(async move {
-                let result = provider.run(()).await;
-                cache.set(cache_key.clone(), result.clone());
-
-                // Add reference count for auto-dispose after cache entry is created
-                if let Some(_disposal_reg) = disposal_registry_for_async {
-                    if let Ok(cache_lock) = cache.cache.lock() {
-                        if let Some(entry) = cache_lock.get(&cache_key) {
-                            entry.add_reference();
-                            debug!(
-                                "🔄 [AUTO-DISPOSE] Added reference for new entry: {} (refs: {})",
-                                cache_key,
-                                entry.reference_count()
-                            );
-                        }
-                    }
-                }
-
-                match result {
-                    Ok(data) => state_for_async.set(AsyncState::Success(data)),
-                    Err(error) => state_for_async.set(AsyncState::Error(error)),
-                }
-            });
-        }));
-
-        state
+        use_provider_core(self, ())
     }
 }
 
@@ -502,268 +539,8 @@ where
     type Error = P::Error;
 
     fn use_provider(self, args: (Param,)) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        let provider = self;
         let param = args.0;
-        let mut state = use_signal(|| AsyncState::Loading);
-        let cache = use_context::<ProviderCache>();
-        let refresh_registry = use_context::<RefreshRegistry>();
-
-        // Auto-dispose functionality
-        let disposal_registry = if provider.auto_dispose() {
-            Some(use_context::<DisposalRegistry>())
-        } else {
-            None
-        };
-
-        // Check cache expiration before the memo - this happens on every render
-        let cache_key = provider.id(&param);
-        let cache_expiration = provider.cache_expiration();
-
-        // Store cache key and disposal registry for cleanup
-        let cache_key_for_cleanup = cache_key.clone();
-        let provider_for_cleanup = provider.clone();
-        let disposal_registry_for_cleanup = disposal_registry.clone();
-        let cache_for_cleanup = cache.clone();
-
-        // Component unmount cleanup - remove reference and schedule disposal
-        use_drop(move || {
-            if let Some(disposal_reg) = &disposal_registry_for_cleanup {
-                // Find and decrement reference count for the cache entry
-                if let Ok(cache_lock) = cache_for_cleanup.cache.lock() {
-                    if let Some(entry) = cache_lock.get(&cache_key_for_cleanup) {
-                        entry.remove_reference();
-                        debug!(
-                            "🔄 [AUTO-DISPOSE] Removed reference for: {} (refs: {})",
-                            cache_key_for_cleanup,
-                            entry.reference_count()
-                        );
-                    }
-                }
-
-                // Schedule disposal after the specified delay
-                let dispose_delay = provider_for_cleanup
-                    .dispose_delay()
-                    .unwrap_or_else(DisposalRegistry::default_dispose_delay);
-                disposal_reg.schedule_disposal(cache_key_for_cleanup.clone(), dispose_delay);
-            }
-        });
-
-        // If cache expiration is enabled, check if current cache entry is expired and remove it
-        if let Some(expiration) = cache_expiration {
-            if let Ok(mut cache_lock) = cache.cache.lock() {
-                if let Some(entry) = cache_lock.get(&cache_key) {
-                    if entry.is_expired(expiration) {
-                        debug!(
-                            "🗑️ [CACHE EXPIRATION] Removing expired cache entry for key: {}",
-                            cache_key
-                        );
-                        cache_lock.remove(&cache_key);
-                        // Trigger a refresh to re-execute the provider
-                        refresh_registry.trigger_refresh(&cache_key);
-                    }
-                }
-            }
-        }
-
-        // SWR staleness checking - runs on every render to check for stale data
-        let stale_time = provider.stale_time();
-        if let Some(stale_duration) = stale_time {
-            if let Ok(cache_lock) = cache.cache.lock() {
-                if let Some(entry) = cache_lock.get(&cache_key) {
-                    if entry.is_stale(stale_duration)
-                        && !entry.is_expired(cache_expiration.unwrap_or(Duration::from_secs(3600)))
-                        && !refresh_registry.is_revalidation_in_progress(&cache_key)
-                    {
-                        // Data is stale but not expired and no revalidation in progress - trigger background revalidation
-                        if refresh_registry.start_revalidation(&cache_key) {
-                            debug!(
-                                "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
-                                cache_key
-                            );
-
-                            let cache = cache.clone();
-                            let cache_key_clone = cache_key.clone();
-                            let provider = provider.clone();
-                            let param = param.clone();
-                            let refresh_registry_clone = refresh_registry.clone();
-
-                            spawn(async move {
-                                let result = provider.run(param).await;
-                                cache.set(cache_key_clone.clone(), result);
-
-                                // Mark revalidation as complete and trigger refresh
-                                refresh_registry_clone.complete_revalidation(&cache_key_clone);
-                                refresh_registry_clone.trigger_refresh(&cache_key_clone);
-                                debug!(
-                                    "✅ [SWR] Background revalidation completed for key: {}",
-                                    cache_key_clone
-                                );
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        // Use memo with reactive dependencies to track changes automatically
-        let _execution_memo = use_memo(use_reactive!(|provider, param| {
-            let cache_key = provider.id(&param);
-            let cache_expiration = provider.cache_expiration();
-
-            // Subscribe to refresh events for this cache key if we have a reactive context
-            if let Some(reactive_context) = ReactiveContext::current() {
-                refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
-            }
-
-            // Read the current refresh count (this makes the memo reactive to changes)
-            let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
-
-            // MOVED: Cache expiration check inside reactive memo - this runs on every reactive update
-            check_and_handle_cache_expiration(
-                cache_expiration,
-                &cache_key,
-                &cache,
-                &refresh_registry,
-            );
-
-            // Set up interval task if provider has interval configured
-            if let Some(interval) = provider.interval() {
-                let cache_clone = cache.clone();
-                let provider_clone = provider.clone();
-                let param_clone = param.clone();
-                let cache_key_clone = cache_key.clone();
-                let refresh_registry_clone = refresh_registry.clone();
-
-                refresh_registry.start_interval_task(&cache_key, interval, move || {
-                    // Re-execute the provider and update cache in background
-                    let cache_for_task = cache_clone.clone();
-                    let provider_for_task = provider_clone.clone();
-                    let param_for_task = param_clone.clone();
-                    let cache_key_for_task = cache_key_clone.clone();
-                    let refresh_registry_for_task = refresh_registry_clone.clone();
-
-                    spawn(async move {
-                        let result = provider_for_task.run(param_for_task).await;
-                        cache_for_task.set(cache_key_for_task.clone(), result);
-
-                        // Trigger refresh to mark reactive contexts as dirty and update UI
-                        refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
-                    });
-                });
-            }
-
-            // Check cache first, with SWR support
-            let cache_expiration = provider.cache_expiration();
-            let stale_time = provider.stale_time();
-
-            if let Some((cached_result, is_stale)) = cache
-                .get_with_staleness::<Result<P::Output, P::Error>>(
-                    &cache_key,
-                    stale_time,
-                    cache_expiration,
-                )
-            {
-                // Add reference count and cancel disposal if auto-dispose is enabled
-                if let Some(ref disposal_reg) = disposal_registry {
-                    disposal_reg.cancel_disposal(&cache_key);
-
-                    // Add reference count for this component using the cache entry
-                    if let Ok(cache_lock) = cache.cache.lock() {
-                        if let Some(entry) = cache_lock.get(&cache_key) {
-                            entry.add_reference();
-                            debug!(
-                                "🔄 [AUTO-DISPOSE] Added reference for: {} (refs: {})",
-                                cache_key,
-                                entry.reference_count()
-                            );
-                        }
-                    }
-                }
-
-                // Serve cached data immediately
-                match cached_result.clone() {
-                    Ok(data) => {
-                        let _ = spawn(async move {
-                            state.set(AsyncState::Success(data));
-                        });
-                    }
-                    Err(error) => {
-                        let _ = spawn(async move {
-                            state.set(AsyncState::Error(error));
-                        });
-                    }
-                }
-
-                // If data is stale, trigger background revalidation
-                if is_stale
-                    && !refresh_registry.is_revalidation_in_progress(&cache_key)
-                    && refresh_registry.start_revalidation(&cache_key)
-                {
-                    debug!(
-                        "🔄 [SWR] Data is stale for key: {} - triggering background revalidation",
-                        cache_key
-                    );
-                    let cache = cache.clone();
-                    let cache_key_clone = cache_key.clone();
-                    let provider = provider.clone();
-                    let param = param.clone();
-                    let refresh_registry_clone = refresh_registry.clone();
-
-                    spawn(async move {
-                        let result = provider.run(param).await;
-                        cache.set(cache_key_clone.clone(), result);
-
-                        // Mark revalidation as complete and trigger refresh
-                        refresh_registry_clone.complete_revalidation(&cache_key_clone);
-                        refresh_registry_clone.trigger_refresh(&cache_key_clone);
-                        debug!(
-                            "✅ [SWR] Background revalidation completed for key: {}",
-                            cache_key_clone
-                        );
-                    });
-                }
-
-                return;
-            }
-
-            // Cache miss - set loading and spawn async task
-            let _ = spawn(async move {
-                state.set(AsyncState::Loading);
-            });
-
-            let cache = cache.clone();
-            let cache_key = cache_key.clone();
-            let provider = provider.clone();
-            let param = param.clone();
-            let disposal_registry_for_async = disposal_registry.clone();
-            let mut state_for_async = state;
-
-            spawn(async move {
-                let result = provider.run(param).await;
-                cache.set(cache_key.clone(), result.clone());
-
-                // Add reference count for auto-dispose after cache entry is created
-                if let Some(_disposal_reg) = disposal_registry_for_async {
-                    if let Ok(cache_lock) = cache.cache.lock() {
-                        if let Some(entry) = cache_lock.get(&cache_key) {
-                            entry.add_reference();
-                            debug!(
-                                "🔄 [AUTO-DISPOSE] Added reference for new entry: {} (refs: {})",
-                                cache_key,
-                                entry.reference_count()
-                            );
-                        }
-                    }
-                }
-
-                match result {
-                    Ok(data) => state_for_async.set(AsyncState::Success(data)),
-                    Err(error) => state_for_async.set(AsyncState::Error(error)),
-                }
-            });
-        }));
-
-        state
+        use_provider_core(self, param)
     }
 }
 
