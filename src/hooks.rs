@@ -87,6 +87,13 @@ use crate::{
 /// - **Auto-Refresh**: Optional automatic refresh at intervals
 /// - **Auto-Dispose**: Automatic cleanup when providers are no longer used
 ///
+/// ## Send + Sync Requirements
+///
+/// Most types require `Send + Sync` because:
+/// - Data is stored in a global cache shared across the application
+/// - Background tasks and intervals need to send data between threads
+/// - The Future from `run()` doesn't need `+ Send` since we use Dioxus's spawn
+///
 /// ## Example
 ///
 /// ```rust,no_run
@@ -133,7 +140,7 @@ where
     ///
     /// This method performs the actual work of the provider, such as fetching data
     /// from an API, reading from a database, or computing a value.
-    fn run(&self, param: Param) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
+    fn run(&self, param: Param) -> impl Future<Output = Result<Self::Output, Self::Error>>;
 
     /// Get a unique identifier for this provider instance with the given parameters
     ///
