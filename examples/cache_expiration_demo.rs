@@ -4,12 +4,16 @@
 //! Unlike SWR which serves stale data while revalidating, cache expiration
 //! completely removes expired data and shows loading state during refetch.
 //!
+//! **Updated to use Global Providers**: This example now uses the new global provider
+//! system for simplified setup. No RiverpodProvider wrapper component needed!
+//!
 //! ## Key Features Demonstrated:
 //! - Traditional cache expiration with configurable times
 //! - Loading states when cache expires
 //! - Different expiration times for different data types
 //! - Manual cache invalidation
 //! - Cache hit/miss indicators
+//! - Global provider management (NEW!)
 
 use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
@@ -482,30 +486,19 @@ fn format_timestamp(timestamp: u64) -> String {
     }
 }
 
-/// Application root with context setup
+/// Application root - now using global providers for simplified setup
 fn app() -> Element {
     rsx! {
-        RiverpodProvider { CacheExpirationDemo {} }
-    }
-}
-
-/// Provider component that sets up all required dioxus-riverpod contexts
-#[component]
-fn RiverpodProvider(children: Element) -> Element {
-    use_context_provider(dioxus_riverpod::cache::ProviderCache::new);
-    use_context_provider(dioxus_riverpod::refresh::RefreshRegistry::new);
-
-    let cache = use_context::<dioxus_riverpod::cache::ProviderCache>();
-    use_context_provider(move || dioxus_riverpod::disposal::DisposalRegistry::new(cache.clone()));
-
-    rsx! {
-        {children}
+        CacheExpirationDemo {}
     }
 }
 
 fn main() {
     // Initialize tracing for debug logs
     tracing_subscriber::fmt::init();
+    
+    // Initialize global providers at application startup
+    dioxus_riverpod::global::init_global_providers();
 
     launch(app);
 }

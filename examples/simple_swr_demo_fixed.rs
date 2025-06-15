@@ -4,12 +4,16 @@
 //! SWR serves cached (stale) data immediately while revalidating in the background,
 //! providing a smooth user experience with fresh data.
 //!
+//! **Updated to use Global Providers**: This example now uses the new global provider
+//! system for simplified setup. No RiverpodProvider wrapper component needed!
+//!
 //! ## Key Features Demonstrated:
 //! - Stale-while-revalidate pattern with configurable stale time
 //! - Instant data serving from cache
 //! - Background revalidation
 //! - Manual refresh functionality
 //! - Loading states and error handling
+//! - Global provider management (NEW!)
 
 use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
@@ -256,27 +260,16 @@ fn SWRDataDisplay<
     }
 }
 
-/// Application root with context setup
+/// Application root - now using global providers for simplified setup
 fn app() -> Element {
     rsx! {
-        RiverpodProvider { SwrDemo {} }
-    }
-}
-
-/// Provider component that sets up all required dioxus-riverpod contexts
-#[component]
-fn RiverpodProvider(children: Element) -> Element {
-    use_context_provider(dioxus_riverpod::cache::ProviderCache::new);
-    use_context_provider(dioxus_riverpod::refresh::RefreshRegistry::new);
-
-    let cache = use_context::<dioxus_riverpod::cache::ProviderCache>();
-    use_context_provider(move || dioxus_riverpod::disposal::DisposalRegistry::new(cache.clone()));
-
-    rsx! {
-        {children}
+        SwrDemo {}
     }
 }
 
 fn main() {
+    // Initialize global providers at application startup
+    dioxus_riverpod::global::init_global_providers();
+    
     launch(app);
 }

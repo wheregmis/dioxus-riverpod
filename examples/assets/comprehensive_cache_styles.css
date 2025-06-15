@@ -718,6 +718,34 @@
     font-size: 1.1rem;
 }
 
+/* Global Provider Styles */
+.global-info {
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 10px 0 20px 0;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(86, 171, 47, 0.3);
+}
+
+.control-btn.clear-all {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.control-btn.clear-all:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(231, 76, 60, 0.3);
+}
+
 @media (max-width: 768px) {
     .features-grid {
         grid-template-columns: 1fr;

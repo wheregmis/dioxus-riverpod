@@ -2,9 +2,10 @@
 //!
 //! This example demonstrates all caching features of dioxus-riverpod in one comprehensive demo.
 //! It showcases how different caching strategies work together and can be combined for
-//! optimal data management.
+//! optimal data management using the new global provider system.
 //!
 //! ## Features Demonstrated:
+//! - **Global Provider Management**: Application-wide cache without context providers
 //! - Interval-based auto-refresh
 //! - Stale-while-revalidate (SWR)
 //! - Cache expiration with TTL
@@ -15,7 +16,7 @@
 //! - Performance monitoring
 
 use dioxus::prelude::*;
-use dioxus_riverpod::prelude::*;
+use dioxus_riverpod::{prelude::*, global::init_global_providers};
 use std::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
@@ -313,6 +314,12 @@ fn generate_messages(chat_id: u32, call_number: u32) -> Vec<Message> {
 }
 
 /// Main comprehensive demo component
+/// 
+/// ✨ **Global Provider Benefits Demonstrated:**
+/// - No RiverpodProvider wrapper needed
+/// - All providers automatically use global cache
+/// - Simplified component structure
+/// - Application-wide cache consistency
 #[component]
 fn ComprehensiveCacheTest() -> Element {
     let mut selected_user_id = use_signal(|| 1u32);
@@ -321,7 +328,7 @@ fn ComprehensiveCacheTest() -> Element {
     let mut show_temp_data = use_signal(|| true);
     let mut show_chat = use_signal(|| true);
 
-    // Initialize all providers
+    // All providers now use global cache automatically - no context needed!
     let live_metrics = use_provider(fetch_live_metrics, ());
     let user_dashboard = use_provider(fetch_user_dashboard, (*selected_user_id.read(),));
     let analytics = use_provider(fetch_analytics_report, ());
@@ -355,10 +362,13 @@ fn ComprehensiveCacheTest() -> Element {
             }
 
             div { class: "demo-controls",
-                h3 { "Test Controls" }
+                h3 { "🌐 Global Provider Test Controls" }
+                p { class: "global-info", 
+                    "✨ All providers now use application-wide global cache - no context providers needed!"
+                }
                 div { class: "control-sections",
                     div { class: "control-section",
-                        h4 { "Manual Refresh" }
+                        h4 { "Manual Refresh (Global Cache)" }
                         div { class: "button-group",
                             button {
                                 class: "control-btn metrics",
@@ -374,6 +384,14 @@ fn ComprehensiveCacheTest() -> Element {
                                 class: "control-btn analytics",
                                 onclick: move |_| refresh_analytics(),
                                 "🔄 Refresh Analytics"
+                            }
+                            button {
+                                class: "control-btn clear-all",
+                                onclick: move |_| {
+                                    let clear_cache = use_clear_provider_cache();
+                                    clear_cache();
+                                },
+                                "🗑️ Clear Global Cache"
                             }
                         }
                     }
@@ -890,27 +908,19 @@ fn format_timestamp(timestamp: u64) -> String {
     }
 }
 
-/// Application root with context setup
+/// Application root - no context setup needed with global providers!
 fn app() -> Element {
     rsx! {
-        RiverpodProvider {
-            ComprehensiveCacheTest {}
-        }
+        ComprehensiveCacheTest {}
     }
 }
 
-/// Provider component that sets up all required dioxus-riverpod contexts
-#[component]
-fn RiverpodProvider(children: Element) -> Element {
-    use_context_provider(dioxus_riverpod::cache::ProviderCache::new);
-    use_context_provider(dioxus_riverpod::refresh::RefreshRegistry::new);
-
-    let cache = use_context::<dioxus_riverpod::cache::ProviderCache>();
-    use_context_provider(move || dioxus_riverpod::disposal::DisposalRegistry::new(cache.clone()));
-
-    rsx! { {children} }
-}
-
 fn main() {
+    // Initialize global providers for application-wide cache management
+    init_global_providers();
+    
+    println!("🚀 Starting Comprehensive Cache Test with Global Providers");
+    println!("🌐 Using global provider management - no context wrappers needed!");
+    
     launch(app);
 }

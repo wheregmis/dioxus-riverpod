@@ -6,6 +6,9 @@
 //! - Auto-dispose for memory management  
 //! - Stale-while-revalidate (SWR) pattern
 //! - Cache expiration policies
+//! 
+//! **Updated to use Global Providers**: This example now uses the new global provider
+//! system for simplified setup. No RiverpodProvider wrapper component needed!
 
 use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
@@ -197,30 +200,17 @@ fn FeatureCard(
     }
 }
 
-/// Application root with context providers setup
+/// Application root - now using global providers for simplified setup
 fn app() -> Element {
     rsx! {
         style { {include_str!("./assets/style.css")} }
-        RiverpodProvider { FeatureTest {} }
-    }
-}
-
-/// Provider component that sets up all required dioxus-riverpod contexts
-#[component] 
-fn RiverpodProvider(children: Element) -> Element {
-    // Setup contexts in correct order
-    use_context_provider(dioxus_riverpod::providers::ProviderCache::new);
-    use_context_provider(dioxus_riverpod::providers::RefreshRegistry::new);
-    
-    // Create disposal registry with cache reference
-    let cache = use_context::<dioxus_riverpod::providers::ProviderCache>();
-    use_context_provider(move || dioxus_riverpod::providers::DisposalRegistry::new(cache.clone()));
-
-    rsx! {
-        {children}
+        FeatureTest {}
     }
 }
 
 fn main() {
+    // Initialize global providers at application startup
+    dioxus_riverpod::global::init_global_providers();
+    
     launch(app);
 }

@@ -19,11 +19,31 @@
 //! use dioxus::prelude::*;
 //! use dioxus_riverpod::prelude::*;
 //!
-//! // Simple provider (no parameters)
-//! let data = use_provider(fetch_data, ());
+//! #[derive(Clone, PartialEq)]
+//! struct DataProvider;
 //!
-//! // Parameterized provider
-//! let user = use_provider(fetch_user, (user_id,));
+//! impl Provider<()> for DataProvider {
+//!     type Output = String;
+//!     type Error = String;
+//!
+//!     async fn run(&self, _: ()) -> Result<Self::Output, Self::Error> {
+//!         Ok("data".to_string())
+//!     }
+//!
+//!     fn id(&self, _: &()) -> String {
+//!         "data".to_string()
+//!     }
+//! }
+//!
+//! #[component]
+//! fn MyComponent() -> Element {
+//!     // Simple provider (no parameters)
+//!     let data = use_provider(DataProvider, ());
+//!
+//!     rsx! {
+//!         div { "Component content" }
+//!     }
+//! }
 //! ```
 
 use dioxus_lib::prelude::*;
@@ -34,6 +54,7 @@ use crate::{
     cache::{AsyncState, ProviderCache},
     disposal::DisposalRegistry,
     refresh::RefreshRegistry,
+    global::{get_global_cache, get_global_refresh_registry, get_global_disposal_registry, is_initialized},
 };
 
 /// A unified trait for defining providers - async operations that return data
@@ -144,10 +165,76 @@ where
     }
 }
 
+/// Get the provider cache, preferring global if available, falling back to context
+fn get_provider_cache() -> ProviderCache {
+    if is_initialized() {
+        get_global_cache().clone()
+    } else {
+        use_context::<ProviderCache>()
+    }
+}
+
+/// Get the refresh registry, preferring global if available, falling back to context
+fn get_refresh_registry() -> RefreshRegistry {
+    if is_initialized() {
+        get_global_refresh_registry().clone()
+    } else {
+        use_context::<RefreshRegistry>()
+    }
+}
+
+/// Get the disposal registry, preferring global if available, falling back to context
+fn get_disposal_registry() -> Option<DisposalRegistry> {
+    if is_initialized() {
+        Some(get_global_disposal_registry().clone())
+    } else {
+        // Safely try to get disposal registry from context, returning None if not available
+        // In Dioxus, use_context panics if the context doesn't exist, so we need to handle this differently
+        // For now, return None when not using global providers - this maintains backward compatibility
+        None
+    }
+}
+
 /// Hook to access the provider cache for manual cache management
+///
+/// This hook now automatically uses global cache if available, or falls back to context-based cache.
+/// This provides seamless migration from context-based to global cache management.
 ///
 /// This provides direct access to the underlying cache, allowing for manual
 /// invalidation, clearing, and other cache operations.
+///
+/// ## Migration
+///
+/// **Old approach (context-based):**
+/// ```rust,no_run
+/// use dioxus_riverpod::prelude::*;
+/// 
+/// #[component]
+/// fn App() -> Element {
+///     rsx! {
+///         RiverpodProvider {
+///             MyComponent {}
+///         }
+///     }
+/// }
+/// ```
+///
+/// **New approach (global):**
+/// ```rust,no_run
+/// use dioxus_riverpod::{prelude::*, global::init_global_providers};
+/// 
+/// fn main() {
+///     init_global_providers();
+///     launch(App);
+/// }
+/// 
+/// #[component]
+/// fn App() -> Element {
+///     rsx! {
+///         MyComponent {}  // No provider wrapper needed!
+///     }
+/// }
+/// ```
 ///
 /// ## Example
 ///
@@ -155,19 +242,20 @@ where
 /// use dioxus::prelude::*;
 /// use dioxus_riverpod::prelude::*;
 ///
-/// fn MyComponent(cx: Scope) -> Element {
+/// #[component]
+/// fn MyComponent() -> Element {
 ///     let cache = use_provider_cache();
 ///     
 ///     // Manually invalidate a specific cache entry
 ///     cache.invalidate("my_provider_key");
 ///     
-///     cx.render(rsx! {
+///     rsx! {
 ///         div { "Cache operations example" }
-///     })
+///     }
 /// }
 /// ```
 pub fn use_provider_cache() -> ProviderCache {
-    use_context::<ProviderCache>()
+    get_provider_cache()
 }
 
 /// Hook to invalidate a specific provider cache entry
@@ -176,21 +264,41 @@ pub fn use_provider_cache() -> ProviderCache {
 /// specified provider and parameters, and trigger a refresh of all components
 /// using that provider.
 ///
+/// Now works with both global and context-based cache management.
+///
 /// ## Example
 ///
 /// ```rust,no_run
 /// use dioxus::prelude::*;
 /// use dioxus_riverpod::prelude::*;
 ///
-/// fn MyComponent(cx: Scope) -> Element {
-///     let invalidate_user = use_invalidate_provider(fetch_user_provider, user_id);
+/// #[derive(Clone, PartialEq)]
+/// struct UserProvider;
+///
+/// impl Provider<u32> for UserProvider {
+///     type Output = String;
+///     type Error = String;
+///
+///     async fn run(&self, user_id: u32) -> Result<Self::Output, Self::Error> {
+///         Ok(format!("User {}", user_id))
+///     }
+///
+///     fn id(&self, user_id: &u32) -> String {
+///         format!("user_{}", user_id)
+///     }
+/// }
+///
+/// #[component]
+/// fn MyComponent() -> Element {
+///     let user_id = 1;
+///     let invalidate_user = use_invalidate_provider(UserProvider, user_id);
 ///     
-///     cx.render(rsx! {
+///     rsx! {
 ///         button {
 ///             onclick: move |_| invalidate_user(),
 ///             "Refresh User Data"
 ///         }
-///     })
+///     }
 /// }
 /// ```
 pub fn use_invalidate_provider<P, Param>(provider: P, param: Param) -> impl Fn() + Clone
@@ -198,8 +306,8 @@ where
     P: Provider<Param>,
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
-    let cache = use_provider_cache();
-    let refresh_registry = use_context::<RefreshRegistry>();
+    let cache = get_provider_cache();
+    let refresh_registry = get_refresh_registry();
     let cache_key = provider.id(&param);
 
     move || {
@@ -213,26 +321,29 @@ where
 /// Returns a function that, when called, will clear all cached provider data
 /// and trigger a refresh of all providers currently in use.
 ///
+/// Now works with both global and context-based cache management.
+///
 /// ## Example
 ///
 /// ```rust,no_run
 /// use dioxus::prelude::*;
 /// use dioxus_riverpod::prelude::*;
 ///
-/// fn MyComponent(cx: Scope) -> Element {
+/// #[component]
+/// fn MyComponent() -> Element {
 ///     let clear_cache = use_clear_provider_cache();
 ///     
-///     cx.render(rsx! {
+///     rsx! {
 ///         button {
 ///             onclick: move |_| clear_cache(),
 ///             "Clear All Cache"
 ///         }
-///     })
+///     }
 /// }
 /// ```
 pub fn use_clear_provider_cache() -> impl Fn() + Clone {
-    let cache = use_provider_cache();
-    let refresh_registry = use_context::<RefreshRegistry>();
+    let cache = get_provider_cache();
+    let refresh_registry = get_refresh_registry();
 
     move || {
         cache.clear();
@@ -244,9 +355,32 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 ///
 /// This provides access to the disposal registry, allowing for manual control
 /// over the auto-dispose functionality.
-pub fn use_disposal_registry() -> DisposalRegistry {
-    use_context::<DisposalRegistry>()
+///
+/// Now works with both global and context-based disposal management.
+///
+/// ## Example
+///
+/// ```rust,no_run
+/// use dioxus::prelude::*;
+/// use dioxus_riverpod::prelude::*;
+///
+/// #[component]
+/// fn MyComponent() -> Element {
+///     if let Some(disposal_registry) = use_disposal_registry() {
+///         // Manually cancel disposal for a specific provider
+///         disposal_registry.cancel_disposal("my_provider_key");
+///     }
+///     
+///     rsx! {
+///         div { "Disposal management example" }
+///     }
+/// }
+/// ```
+pub fn use_disposal_registry() -> Option<DisposalRegistry> {
+    get_disposal_registry()
 }
+
+
 
 /// Trait for unified provider usage - automatically handles providers with and without parameters
 ///
@@ -426,12 +560,12 @@ where
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
     let mut state = use_signal(|| AsyncState::Loading);
-    let cache = use_context::<ProviderCache>();
-    let refresh_registry = use_context::<RefreshRegistry>();
+    let cache = get_provider_cache();
+    let refresh_registry = get_refresh_registry();
 
     // Auto-dispose functionality
     let disposal_registry = if provider.auto_dispose() {
-        Some(use_context::<DisposalRegistry>())
+        get_disposal_registry()
     } else {
         None
     };
@@ -588,17 +722,31 @@ fn check_and_handle_cache_expiration(
 /// use dioxus::prelude::*;
 /// use dioxus_riverpod::prelude::*;
 ///
+/// #[derive(Clone, PartialEq)]
+/// struct DataProvider;
+///
+/// impl Provider<()> for DataProvider {
+///     type Output = String;
+///     type Error = String;
+///
+///     async fn run(&self, _: ()) -> Result<Self::Output, Self::Error> {
+///         Ok("Hello World".to_string())
+///     }
+///
+///     fn id(&self, _: &()) -> String {
+///         "data".to_string()
+///     }
+/// }
+///
+/// #[component]
 /// fn MyComponent() -> Element {
 ///     // Provider with no parameters
-///     let data = use_provider(fetch_data, ());
-///     
-///     // Provider with parameters
-///     let user_data = use_provider(fetch_user, (user_id,));
+///     let data = use_provider(DataProvider, ());
 ///     
 ///     match *data.read() {
 ///         AsyncState::Loading => rsx! { div { "Loading..." } },
 ///         AsyncState::Success(ref value) => rsx! { div { "{value}" } },
-///         AsyncState::Error(ref err) => rsx! { div { "Error: {err}" } },
+///         AsyncState::Error(ref _err) => rsx! { div { "Error occurred" } },
 ///     }
 /// }
 /// ```

@@ -4,12 +4,16 @@
 //! Auto-dispose automatically cleans up providers from memory when they haven't
 //! been used for a specified duration, helping prevent memory leaks in dynamic UIs.
 //!
+//! **Updated to use Global Providers**: This example now uses the new global provider
+//! system for simplified setup. No RiverpodProvider wrapper component needed!
+//!
 //! ## Key Features Demonstrated:
 //! - Automatic disposal when providers are unused
 //! - Configurable disposal delays
 //! - Memory cleanup tracking
 //! - Component mounting/unmounting effects
 //! - Resource lifecycle management
+//! - Global provider management (NEW!)
 
 use dioxus::prelude::*;
 use dioxus_riverpod::prelude::*;
@@ -654,27 +658,16 @@ fn format_timestamp(timestamp: u64) -> String {
     }
 }
 
-/// Application root with context setup
+/// Application root - now using global providers for simplified setup
 fn app() -> Element {
     rsx! {
-        RiverpodProvider { AutoDisposeDemo {} }
-    }
-}
-
-/// Provider component that sets up all required dioxus-riverpod contexts
-#[component]
-fn RiverpodProvider(children: Element) -> Element {
-    use_context_provider(dioxus_riverpod::cache::ProviderCache::new);
-    use_context_provider(dioxus_riverpod::refresh::RefreshRegistry::new);
-
-    let cache = use_context::<dioxus_riverpod::cache::ProviderCache>();
-    use_context_provider(move || dioxus_riverpod::disposal::DisposalRegistry::new(cache.clone()));
-
-    rsx! {
-        {children}
+        AutoDisposeDemo {}
     }
 }
 
 fn main() {
+    // Initialize global providers at application startup
+    dioxus_riverpod::global::init_global_providers();
+    
     launch(app);
 }
