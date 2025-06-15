@@ -1,4 +1,4 @@
-//! # Simple SWR (Stale-While-Revalidate) Demo
+//! # SWR (Stale-While-Revalidate) Demo
 //!
 //! This example demonstrates the basic SWR pattern using dioxus-riverpod.
 //! SWR serves cached (stale) data immediately while revalidating in the background,

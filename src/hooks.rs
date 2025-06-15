@@ -441,6 +441,48 @@ fn setup_interval_task_core<P, Param>(
     }
 }
 
+/// Sets up automatic cache expiration monitoring for providers
+fn setup_cache_expiration_task_core<P, Param>(
+    provider: &P,
+    _param: &Param,
+    cache_key: &str,
+    cache: &ProviderCache,
+    refresh_registry: &RefreshRegistry,
+) where
+    P: Provider<Param> + Clone + Send,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    if let Some(expiration) = provider.cache_expiration() {
+        let cache_clone = cache.clone();
+        let cache_key_clone = cache_key.to_string();
+        let refresh_registry_clone = refresh_registry.clone();
+
+        refresh_registry.start_periodic_task(
+            cache_key,
+            TaskType::CacheExpiration,
+            expiration / 4, // Check every quarter of the expiration time
+            move || {
+                // Check if cache entry has expired
+                if let Ok(mut cache_lock) = cache_clone.cache.lock() {
+                    if let Some(entry) = cache_lock.get(&cache_key_clone) {
+                        if entry.is_expired(expiration) {
+                            debug!(
+                                "🗑️ [AUTO-EXPIRATION] Cache expired for key: {} - triggering reactive refresh",
+                                cache_key_clone
+                            );
+                            cache_lock.remove(&cache_key_clone);
+                            drop(cache_lock); // Release lock before triggering refresh
+                            
+                            // Trigger refresh to mark all reactive contexts as dirty
+                            refresh_registry_clone.trigger_refresh(&cache_key_clone);
+                        }
+                    }
+                }
+            },
+        );
+    }
+}
+
 /// Sets up automatic stale-checking task for SWR providers
 fn setup_stale_check_task_core<P, Param>(
     provider: &P,
@@ -497,7 +539,6 @@ where
     // Use memo with reactive dependencies to track changes automatically
     let _execution_memo = use_memo(use_reactive!(|(provider, param)| {
         let cache_key = provider.id(&param);
-        let cache_expiration = provider.cache_expiration();
 
         debug!(
             "🔄 [USE_PROVIDER] Memo executing for key: {} with param: {:?}",
@@ -512,8 +553,8 @@ where
         // Read the current refresh count (this makes the memo reactive to changes)
         let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
 
-        // Cache expiration check inside reactive memo - this runs on every reactive update
-        check_and_handle_cache_expiration(cache_expiration, &cache_key, &cache, &refresh_registry);
+        // Set up cache expiration monitoring task
+        setup_cache_expiration_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
 
         // Set up interval task if provider has interval configured
         setup_interval_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
@@ -521,7 +562,7 @@ where
         // Set up stale check task if provider has stale time configured
         setup_stale_check_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
 
-        // Check cache first - serve any available data (fresh or stale)
+        // Check cache for valid data
         if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
             // Access tracking is automatically handled by cache.get() updating last_accessed time
             debug!("📊 [CACHE-HIT] Serving cached data for: {}", cache_key);

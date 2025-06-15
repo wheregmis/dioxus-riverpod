@@ -1,8 +1,8 @@
-//! # Comprehensive Cache Test
+//! # Comprehensive Dioxus-Riverpod Demo
 //!
-//! This example demonstrates all caching features of dioxus-riverpod in one comprehensive demo.
-//! It showcases how different caching strategies work together and can be combined for
-//! optimal data management using the new global provider system.
+//! This example demonstrates all caching and state management features of dioxus-riverpod
+//! in one comprehensive demo. It showcases how different strategies work together for
+//! optimal data management using the global provider system.
 //!
 //! ## Features Demonstrated:
 //! - **Global Provider Management**: Application-wide cache without context providers
@@ -39,7 +39,7 @@ static API_CALL_COUNTER: AtomicU32 = AtomicU32::new(0);
 static ERROR_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Live data with interval refresh - updates every 4 seconds
-#[provider(interval = "4s")]
+#[provider(interval = "4s", cache_expiration = "20s")]
 async fn fetch_live_metrics() -> Result<LiveMetrics, String> {
     sleep(Duration::from_millis(800)).await;
 
@@ -59,7 +59,7 @@ async fn fetch_live_metrics() -> Result<LiveMetrics, String> {
 }
 
 /// SWR data - serves stale data while revalidating after 6 seconds
-#[provider(stale_time = "6s")]
+#[provider(stale_time = "6s", cache_expiration = "30s")]
 async fn fetch_user_dashboard(user_id: u32) -> Result<UserDashboard, String> {
     sleep(Duration::from_millis(1200)).await;
 
@@ -339,8 +339,8 @@ fn ComprehensiveCacheTest() -> Element {
     let refresh_metrics = use_invalidate_provider(fetch_live_metrics, ());
     let refresh_dashboard = use_invalidate_provider(fetch_user_dashboard, *selected_user_id.read());
     let refresh_analytics = use_invalidate_provider(fetch_analytics_report, ());
-    let _refresh_temp = use_invalidate_provider(fetch_temporary_data, session_id.read().clone());
-    let _refresh_chat = use_invalidate_provider(fetch_chat_messages, *selected_chat_id.read());
+    let refresh_temp = use_invalidate_provider(fetch_temporary_data, session_id.read().clone());
+    let refresh_chat = use_invalidate_provider(fetch_chat_messages, *selected_chat_id.read());
 
     rsx! {
         div { class: "comprehensive-demo",
@@ -384,6 +384,16 @@ fn ComprehensiveCacheTest() -> Element {
                                 class: "control-btn analytics",
                                 onclick: move |_| refresh_analytics(),
                                 "🔄 Refresh Analytics"
+                            }
+                            button {
+                                class: "control-btn temp",
+                                onclick: move |_| refresh_temp(),
+                                "🔄 Refresh Temp Data"
+                            }
+                            button {
+                                class: "control-btn chat",
+                                onclick: move |_| refresh_chat(),
+                                "🔄 Refresh Chat"
                             }
                             button {
                                 class: "control-btn clear-all",
@@ -475,12 +485,15 @@ fn ComprehensiveCacheTest() -> Element {
                 // Analytics Report (Cache Expiration)
                 AnalyticsCard { data: analytics }
 
-                // Temporary Data (Auto-dispose)
+                // Temporary Data (Cache Expiration)
                 if *show_temp_data.read() {
-                    TempDataCard { data: temp_data }
+                    TempDataCard { 
+                        data: temp_data,
+                        session_id: session_id.read().clone(),
+                    }
                 }
 
-                // Chat Data (SWR + Auto-dispose)
+                // Chat Data (SWR + Cache Expiration)
                 if *show_chat.read() {
                     ChatCard {
                         data: chat_data,
@@ -503,36 +516,37 @@ fn ComprehensiveCacheTest() -> Element {
                         div { class: "strategy-name interval", "Interval" }
                         div { "Time-based (4s)" }
                         div { "Always fresh" }
-                        div { "Manual cleanup" }
+                        div { "No cleanup" }
                         div { "Live monitoring" }
                     }
                     div { class: "comparison-row",
                         div { class: "strategy-name swr", "SWR" }
                         div { "On stale (6s)" }
                         div { "Instant (stale ok)" }
-                        div { "Manual cleanup" }
+                        div { "Auto cleanup (30s)" }
                         div { "User dashboards" }
                     }
                     div { class: "comparison-row",
-                        div { class: "strategy-name cache", "Cache TTL" }
-                        div { "On expiration (10s)" }
+                        div { class: "strategy-name cache", "Cache Expiration" }
+                        div { "Reactive expiration (7s/10s)" }
                         div { "Loading on miss" }
-                        div { "Auto cleanup" }
-                        div { "Heavy computations" }
+                        div { "Auto cleanup (7s/10s)" }
+                        div { "Analytics & Session data" }
                     }
                     div { class: "comparison-row",
-                        div { class: "strategy-name dispose", "Auto-dispose" }
-                        div { "Manual refresh" }
-                        div { "Loading on miss" }
-                        div { "Auto cleanup (7s)" }
-                        div { "Session data" }
-                    }
-                    div { class: "comparison-row",
-                        div { class: "strategy-name combined", "SWR + Dispose" }
+                        div { class: "strategy-name combined", "SWR + Cache Expiration" }
                         div { "On stale (5s)" }
                         div { "Instant (stale ok)" }
                         div { "Auto cleanup (12s)" }
                         div { "Chat/messaging" }
+                    }
+                }
+                div { class: "reactive-note",
+                    p { class: "note-text",
+                        "🔄 " strong { "Reactive Cache Expiration:" } " Cache entries now expire automatically and trigger component re-renders immediately!"
+                    }
+                    p { class: "note-text",
+                        "🧹 " strong { "Intelligent Memory Management:" } " All strategies feature automatic cleanup with LRU eviction, access tracking, and periodic cleanup - no manual intervention required!"
                     }
                 }
             }
@@ -551,6 +565,7 @@ fn ComprehensiveCacheTest() -> Element {
 /// Specific card components for each feature
 #[component]
 fn LiveMetricsCard(data: Signal<AsyncState<LiveMetrics, String>>) -> Element {
+    let refresh_metrics = use_invalidate_provider(fetch_live_metrics, ());
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -564,12 +579,20 @@ fn LiveMetricsCard(data: Signal<AsyncState<LiveMetrics, String>>) -> Element {
                     h3 { class: "card-title", "📡 Live Metrics (Interval: 4s)" }
                     p { class: "card-strategy", "Auto-refresh every 4 seconds" }
                 }
-                div { class: format!("status-indicator {}", status_class),
-                    match status_class {
-                        "loading" => "🔄",
-                        "success" => "✅",
-                        "error" => "❌",
-                        _ => "❓",
+                div { class: "card-header-actions",
+                    button {
+                        class: "card-refresh-btn",
+                        onclick: move |_| refresh_metrics(),
+                        title: "Manually refresh data",
+                        "🔄"
+                    }
+                    div { class: format!("status-indicator {}", status_class),
+                        match status_class {
+                            "loading" => "🔄",
+                            "success" => "✅",
+                            "error" => "❌",
+                            _ => "❓",
+                        }
                     }
                 }
             }
@@ -626,6 +649,7 @@ fn LiveMetricsCard(data: Signal<AsyncState<LiveMetrics, String>>) -> Element {
 
 #[component]
 fn UserDashboardCard(data: Signal<AsyncState<UserDashboard, String>>, user_id: u32) -> Element {
+    let refresh_dashboard = use_invalidate_provider(fetch_user_dashboard, user_id);
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -639,12 +663,20 @@ fn UserDashboardCard(data: Signal<AsyncState<UserDashboard, String>>, user_id: u
                     h3 { class: "card-title", "👤 User Dashboard (SWR: 6s) - User {user_id}" }
                     p { class: "card-strategy", "Stale-while-revalidate after 6 seconds" }
                 }
-                div { class: format!("status-indicator {}", status_class),
-                    match status_class {
-                        "loading" => "🔄",
-                        "success" => "✅",
-                        "error" => "❌",
-                        _ => "❓",
+                div { class: "card-header-actions",
+                    button {
+                        class: "card-refresh-btn",
+                        onclick: move |_| refresh_dashboard(),
+                        title: "Manually refresh data",
+                        "🔄"
+                    }
+                    div { class: format!("status-indicator {}", status_class),
+                        match status_class {
+                            "loading" => "🔄",
+                            "success" => "✅",
+                            "error" => "❌",
+                            _ => "❓",
+                        }
                     }
                 }
             }
@@ -691,6 +723,7 @@ fn UserDashboardCard(data: Signal<AsyncState<UserDashboard, String>>, user_id: u
 
 #[component]
 fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
+    let refresh_analytics = use_invalidate_provider(fetch_analytics_report, ());
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -702,14 +735,22 @@ fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
             div { class: "card-header",
                 div { class: "card-title-section",
                     h3 { class: "card-title", "📊 Analytics Report (TTL: 10s)" }
-                    p { class: "card-strategy", "Traditional cache expiration after 10 seconds" }
+                    p { class: "card-strategy", "Reactive cache expiration after 10 seconds" }
                 }
-                div { class: format!("status-indicator {}", status_class),
-                    match status_class {
-                        "loading" => "🔄",
-                        "success" => "✅",
-                        "error" => "❌",
-                        _ => "❓",
+                div { class: "card-header-actions",
+                    button {
+                        class: "card-refresh-btn",
+                        onclick: move |_| refresh_analytics(),
+                        title: "Manually refresh data",
+                        "🔄"
+                    }
+                    div { class: format!("status-indicator {}", status_class),
+                        match status_class {
+                            "loading" => "🔄",
+                            "success" => "✅",
+                            "error" => "❌",
+                            _ => "❓",
+                        }
                     }
                 }
             }
@@ -764,7 +805,8 @@ fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
 }
 
 #[component]
-fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>) -> Element {
+fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>, session_id: String) -> Element {
+    let refresh_temp = use_invalidate_provider(fetch_temporary_data, session_id);
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -775,15 +817,23 @@ fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>) -> Element {
         div { class: "feature-card temp",
             div { class: "card-header",
                 div { class: "card-title-section",
-                    h3 { class: "card-title", "🗑️ Temp Session Data (Auto-dispose: 7s)" }
-                    p { class: "card-strategy", "Auto-dispose after 7 seconds of no use" }
+                    h3 { class: "card-title", "🗑️ Temp Session Data (Cache Expiration: 7s)" }
+                    p { class: "card-strategy", "Reactive cache expiration after 7 seconds, automatically cleaned up" }
                 }
-                div { class: format!("status-indicator {}", status_class),
-                    match status_class {
-                        "loading" => "🔄",
-                        "success" => "✅",
-                        "error" => "❌",
-                        _ => "❓",
+                div { class: "card-header-actions",
+                    button {
+                        class: "card-refresh-btn",
+                        onclick: move |_| refresh_temp(),
+                        title: "Manually refresh data",
+                        "🔄"
+                    }
+                    div { class: format!("status-indicator {}", status_class),
+                        match status_class {
+                            "loading" => "🔄",
+                            "success" => "✅",
+                            "error" => "❌",
+                            _ => "❓",
+                        }
                     }
                 }
             }
@@ -827,6 +877,7 @@ fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>) -> Element {
 
 #[component]
 fn ChatCard(data: Signal<AsyncState<ChatData, String>>, chat_id: u32) -> Element {
+    let refresh_chat = use_invalidate_provider(fetch_chat_messages, chat_id);
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -837,15 +888,23 @@ fn ChatCard(data: Signal<AsyncState<ChatData, String>>, chat_id: u32) -> Element
         div { class: "feature-card chat",
             div { class: "card-header",
                 div { class: "card-title-section",
-                    h3 { class: "card-title", "💬 Chat {chat_id} (SWR: 5s + Auto-dispose: 12s)" }
-                    p { class: "card-strategy", "Combined SWR and auto-dispose strategy" }
+                    h3 { class: "card-title", "💬 Chat {chat_id} (SWR: 5s + Cache Expiration: 12s)" }
+                    p { class: "card-strategy", "Combined SWR and intelligent cache expiration strategy" }
                 }
-                div { class: format!("status-indicator {}", status_class),
-                    match status_class {
-                        "loading" => "🔄",
-                        "success" => "✅",
-                        "error" => "❌",
-                        _ => "❓",
+                div { class: "card-header-actions",
+                    button {
+                        class: "card-refresh-btn",
+                        onclick: move |_| refresh_chat(),
+                        title: "Manually refresh data",
+                        "🔄"
+                    }
+                    div { class: format!("status-indicator {}", status_class),
+                        match status_class {
+                            "loading" => "🔄",
+                            "success" => "✅",
+                            "error" => "❌",
+                            _ => "❓",
+                        }
                     }
                 }
             }

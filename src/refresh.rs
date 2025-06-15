@@ -43,6 +43,8 @@ pub enum TaskType {
     StaleCheck,
     /// Cache cleanup task that removes unused entries and enforces size limits
     CacheCleanup,
+    /// Cache expiration task that monitors and removes expired entries
+    CacheExpiration,
 }
 
 /// Registry for periodic tasks (intervals and stale checks)
@@ -162,10 +164,10 @@ impl RefreshRegistry {
         if let Ok(mut tasks) = self.periodic_tasks.lock() {
             let task_key = format!("{}:{:?}", key, task_type);
 
-            // For stale check tasks, don't create multiple tasks for the same provider
-            if task_type == TaskType::StaleCheck
+            // For certain task types, don't create multiple tasks for the same provider
+            if (task_type == TaskType::StaleCheck || task_type == TaskType::CacheExpiration)
                 && tasks.iter().any(|(k, (t, _, _))| {
-                    k.starts_with(&format!("{}:", key)) && *t == TaskType::StaleCheck
+                    k.starts_with(&format!("{}:", key)) && *t == task_type
                 })
             {
                 return;
@@ -178,8 +180,8 @@ impl RefreshRegistry {
                     if task_type == TaskType::IntervalRefresh && interval < *current_interval {
                         tasks.remove(&task_key);
                         true
-                    } else if task_type == TaskType::StaleCheck {
-                        false // Don't replace stale check tasks
+                    } else if task_type == TaskType::StaleCheck || task_type == TaskType::CacheExpiration {
+                        false // Don't replace stale check or cache expiration tasks
                     } else {
                         false // Keep existing shorter interval
                     }
@@ -187,14 +189,17 @@ impl RefreshRegistry {
             };
 
             if should_create_new_task {
-                // Adjust interval for stale checking - check every stale_time/4
-                let actual_interval = if task_type == TaskType::StaleCheck {
-                    Duration::max(
+                // Adjust interval for different task types
+                let actual_interval = match task_type {
+                    TaskType::StaleCheck => Duration::max(
                         Duration::min(interval / 4, Duration::from_secs(30)),
                         Duration::from_secs(1),
-                    )
-                } else {
-                    interval
+                    ),
+                    TaskType::CacheExpiration => Duration::max(
+                        Duration::min(interval / 4, Duration::from_secs(30)),
+                        Duration::from_secs(1),
+                    ),
+                    _ => interval,
                 };
 
                 spawn(async move {
