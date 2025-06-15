@@ -46,13 +46,6 @@ dioxus = { version = "0.6", features = ["desktop"] }
 # Web-only dependencies for examples  
 dioxus = { version = "0.6", features = ["web"] }
 
-[[example]]
-name = "comprehensive_cache_test"
-path = "examples/comprehensive_cache_test.rs"
-
-[[example]]
-name = "auto_dispose_demo"
-path = "examples/auto_dispose_demo.rs"
 
 [profile]
 
