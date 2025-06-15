@@ -70,43 +70,59 @@ fn FeatureTest() -> Element {
 
     rsx! {
         div { class: "container",
-            h1 { "🚀 Cross-Platform Features Demo" }
-            p { "Testing interval, auto-dispose, SWR, and cache expiration" }
-            div { class: "feature-grid",
-                FeatureCard {
-                    title: "📡 Interval Provider",
-                    subtitle: "Auto-refresh every 3s",
-                    data: live_data,
-                    show_refresh: true,
-                    refresh: refresh_live,
-                    description: "Updates automatically in background",
-                }
-                FeatureCard {
-                    title: "🗑️ Auto-dispose Provider",
-                    subtitle: "Disposes after 5s",
-                    data: auto_dispose_data,
-                    show_refresh: false,
-                    refresh: move |_| {},
-                    description: "Clears from memory when unused",
-                }
-                FeatureCard {
-                    title: "🔄 SWR Provider",
-                    subtitle: "Stale after 2s",
-                    data: swr_data,
-                    show_refresh: true,
-                    refresh: refresh_swr,
-                    description: "Serves stale data, revalidates in background",
-                }
-                FeatureCard {
-                    title: "💾 Cache Expiration",
-                    subtitle: "Expires after 4s",
-                    data: cached_data,
-                    show_refresh: true,
-                    refresh: refresh_cached,
-                    description: "Shows loading when cache expires",
+            div { class: "header",
+                h1 { class: "main-title", "🚀 Dioxus Riverpod Features" }
+                p { class: "subtitle", "Cross-Platform State Management Demo" }
+            }
+            div { class: "features-grid",
+                div { class: "features-grid",
+                    FeatureCard {
+                        title: "Interval Provider".to_string(),
+                        description: "Automatically refreshes data every 3 seconds in the background.".to_string(),
+                        observation: "Watch the counter increment every 3 seconds automatically.".to_string(),
+                        data: live_data, // Fixed signal name
+                        show_refresh: Some(false),
+                    }
+                    FeatureCard {
+                        title: "Auto-Dispose Provider".to_string(),
+                        description: "Automatically cleans up from memory when not in use for 5 seconds.".to_string(),
+                        observation: "Toggle visibility and watch memory cleanup after 5s.".to_string(),
+                        data: auto_dispose_data, // Fixed signal name
+                        show_refresh: Some(false),
+                    }
+                    FeatureCard {
+                        title: "SWR Provider".to_string(),
+                        description: "Serves stale data instantly while revalidating in background.".to_string(),
+                        observation: "Fresh data shows instantly, then updates after 2s stale time.".to_string(),
+                        data: swr_data, // Fixed signal name
+                        show_refresh: Some(true),
+                    }
+                    FeatureCard {
+                        title: "Cache Expiration Provider".to_string(),
+                        description: "Traditional cache that expires after 4 seconds.".to_string(),
+                        observation: "Shows loading state when cache expires after 4s.".to_string(),
+                        data: cached_data, // Fixed signal name
+                        show_refresh: Some(true),
+                    }
                 }
             }
-            ObservationGuide {}
+            div { class: "footer-section",
+                div { class: "platform-note",
+                    h3 { "✅ Cross-Platform Compatible" }
+                    p { "All features work identically on web and desktop platforms" }
+                }
+                div { class: "footer-branding",
+                    p {
+                        "Built with ❤️ using "
+                        strong { "Dioxus Riverpod" }
+                    }
+                    p { class: "feature-tags",
+                        span { class: "tag", "Cross-platform" }
+                        span { class: "tag", "Reactive" }
+                        span { class: "tag", "Type-safe" }
+                    }
+                }
+            }
         }
     }
 }
@@ -115,49 +131,67 @@ fn FeatureTest() -> Element {
 #[component]
 fn FeatureCard(
     title: String,
-    subtitle: String,
-    data: ReadOnlySignal<AsyncState<String, String>>,
-    show_refresh: bool,
-    refresh: EventHandler<()>,
     description: String,
+    observation: String,
+    data: Signal<AsyncState<String, String>>,
+    show_refresh: Option<bool>,
 ) -> Element {
+    let emoji = match title.as_str() {
+        "Interval Provider" => "📡",
+        "Auto-Dispose Provider" => "🗑️", 
+        "SWR Provider" => "🔄",
+        "Cache Expiration Provider" => "💾",
+        _ => "⚡"
+    };
+    
+    let card_id = title.chars()
+        .filter(|c| c.is_ascii_alphabetic())
+        .collect::<String>()
+        .to_lowercase();
+    
+    let status_class = match &*data.read() {
+        AsyncState::Loading => "status loading",
+        AsyncState::Error(_) => "status error", 
+        AsyncState::Success(_) => "status success",
+    };
+
     rsx! {
         div { class: "feature-card",
-            h3 { "{title}" }
-            p { class: "subtitle", "{subtitle}" }
-            div { class: "status",
-                match &*data.read() {
-                    AsyncState::Loading => rsx! {
-                        p { "⏳ Loading..." }
-                    },
-                    AsyncState::Success(data) => rsx! {
-                        p { class: "success", "✅ {data}" }
-                    },
-                    AsyncState::Error(e) => rsx! {
-                        p { class: "error", "❌ Error: {e}" }
-                    },
+            div { class: "card-header",
+                h3 { class: "feature-title",
+                    span { class: "feature-emoji", "{emoji}" }
+                    "{title}"
                 }
+                div { class: "{status_class}" }
             }
-            if show_refresh {
-                button { onclick: move |_| refresh.call(()), "🔄 Refresh" }
-            }
-            p { class: "description", "{description}" }
-        }
-    }
-}
-
-/// Guide component explaining what to observe
-#[component] 
-fn ObservationGuide() -> Element {
-    rsx! {
-        div { class: "observation-guide",
-            h3 { "🔍 What to observe:" }
-            ul {
-                li { "📡 Interval provider updates every 3 seconds automatically" }
-                li { "🗑️ Auto-dispose clears from memory after 5s of no use" }
-                li { "🔄 SWR serves stale data instantly, updates in background after 2s" }
-                li { "💾 Cache expiration shows loading when data expires after 4s" }
-                li { "✅ All features work identically on web and desktop" }
+            div { class: "card-content",
+                p { class: "feature-description", "{description}" }
+                div { class: "observation-tip",
+                    strong { "🔍 What to observe:" }
+                    p { "{observation}" }
+                }
+                div { class: "data-display",
+                    match &*data.read() {
+                        AsyncState::Loading => rsx! {
+                            div { class: "loading-spinner" }
+                            span { "Loading..." }
+                        },
+                        AsyncState::Error(e) => rsx! {
+                            span { class: "error-text", "Error: {e}" }
+                        },
+                        AsyncState::Success(value) => rsx! {
+                            div { class: "success-data",
+                                strong { "Data: " }
+                                span { "{value}" }
+                            }
+                        },
+                    }
+                }
+                if let Some(true) = show_refresh {
+                    div { class: "card-actions",
+                        button { class: "refresh-btn", onclick: move |_| {}, "🔄 Refresh" }
+                    }
+                }
             }
         }
     }
