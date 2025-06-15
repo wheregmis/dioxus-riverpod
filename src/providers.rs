@@ -57,8 +57,8 @@ use std::{
     },
     time::Duration,
 };
+#[cfg(not(target_family = "wasm"))]
 use tokio::task::JoinHandle;
-use dioxus_lib::prelude::Task;
 use tracing::debug;
 
 #[cfg(not(target_family = "wasm"))]
@@ -79,7 +79,8 @@ use wasmtimer::tokio as time;
 /// Type alias for reactive context storage
 type ReactiveContextSet = Arc<Mutex<HashSet<ReactiveContext>>>;
 type ReactiveContextRegistry = Arc<Mutex<HashMap<String, ReactiveContextSet>>>;
-type IntervalTaskRegistry = Arc<Mutex<HashMap<String, (Duration, JoinHandle<()>)>>>;
+// Since we're using dioxus spawn for both platforms, we only store interval duration
+type IntervalTaskRegistry = Arc<Mutex<HashMap<String, (Duration, ())>>>;
 
 //
 // ============================================================================
@@ -158,9 +159,10 @@ impl RefreshRegistry {
             // Cancel existing task if it exists and the new interval is shorter
             let should_create_new_task = match tasks.get(key) {
                 None => true,
-                Some((current_interval, current_task)) => {
+                Some((current_interval, _current_task)) => {
                     if interval < *current_interval {
-                        current_task.abort();
+                        // Since we're using dioxus spawn, tasks are automatically
+                        // cancelled when the component unmounts. We just remove the entry.
                         tasks.remove(key);
                         true
                     } else {
@@ -169,10 +171,10 @@ impl RefreshRegistry {
                 }
             };
 
-            // WASM compatibility: disable background interval tasks in WASM
-            #[cfg(not(target_family = "wasm"))]
+            // Cross-platform interval task creation using dioxus spawn
             if should_create_new_task {
-                let task = tokio::spawn(async move {
+                // Use dioxus spawn for both platforms to avoid context conflicts
+                spawn(async move {
                     let mut interval_timer = time::interval(interval);
                     interval_timer.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
@@ -185,7 +187,9 @@ impl RefreshRegistry {
                     }
                 });
 
-                tasks.insert(key.to_string(), (interval, task));
+                // Store dummy entry to maintain consistency across platforms
+                // In dioxus, tasks are automatically cancelled when the component unmounts
+                tasks.insert(key.to_string(), (interval, ()));
             }
         }
     }
@@ -193,8 +197,9 @@ impl RefreshRegistry {
     /// Stop an interval task for a specific provider
     pub fn stop_interval_task(&self, key: &str) {
         if let Ok(mut tasks) = self.interval_tasks.lock() {
-            if let Some((_, task)) = tasks.remove(key) {
-                task.abort();
+            if let Some((_, _task)) = tasks.remove(key) {
+                // Since we're using dioxus spawn, tasks are automatically
+                // cancelled when the component unmounts. We just remove the entry.
             }
         }
     }
@@ -1056,7 +1061,10 @@ where
 /// Registry for managing provider disposal timers and cleanup
 #[derive(Clone, Default)]
 pub struct DisposalRegistry {
+    #[cfg(not(target_family = "wasm"))]
     disposal_timers: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
+    #[cfg(target_family = "wasm")]
+    disposal_timers: Arc<Mutex<HashMap<String, ()>>>, // Dummy type for WASM
     cache: Option<ProviderCache>,
 }
 
@@ -1066,67 +1074,93 @@ impl DisposalRegistry {
             disposal_timers: Arc::new(Mutex::new(HashMap::new())),
             cache: Some(cache),
         }
-    }
-
-    /// Schedule disposal of a provider after the specified delay
+    }    /// Schedule disposal of a provider after the specified delay
     pub fn schedule_disposal(&self, cache_key: String, dispose_delay: Duration) {
-        // WASM compatibility: disable auto-disposal in WASM
-        #[cfg(not(target_family = "wasm"))]
         if let (Ok(mut timers), Some(cache)) = (self.disposal_timers.lock(), &self.cache) {
-            // Cancel existing timer if present
-            if let Some(existing_timer) = timers.remove(&cache_key) {
-                existing_timer.abort();
-            }
+            // Cross-platform disposal scheduling
+            #[cfg(not(target_family = "wasm"))]
+            {
+                // Cancel existing timer if present
+                if let Some(existing_timer) = timers.remove(&cache_key) {
+                    existing_timer.abort();
+                }
 
-            let cache_clone = cache.clone();
-            let cache_key_clone = cache_key.clone();
+                let cache_clone = cache.clone();
+                let cache_key_clone = cache_key.clone();
 
-            let timer = tokio::spawn(async move {
-                time::sleep(dispose_delay).await;
+                let timer = tokio::spawn(async move {
+                    time::sleep(dispose_delay).await;
 
-                // Check if the provider can still be disposed
-                // After waiting dispose_delay, if entry exists and has no references, dispose it
-                if let Ok(cache_guard) = cache_clone.cache.lock() {
-                    if let Some(entry) = cache_guard.get(&cache_key_clone) {
-                        // Only check reference count since we already waited the appropriate delay
-                        if entry.reference_count() == 0 {
-                            drop(cache_guard);
-                            cache_clone.invalidate(&cache_key_clone);
-                            debug!("🗑️ [AUTO-DISPOSE] Disposed provider: {}", cache_key_clone);
-                        } else {
-                            debug!(
-                                "🔄 [AUTO-DISPOSE] Disposal skipped (provider in use): {}",
-                                cache_key_clone
-                            );
+                    // Check if the provider can still be disposed
+                    if let Ok(cache_guard) = cache_clone.cache.lock() {
+                        if let Some(entry) = cache_guard.get(&cache_key_clone) {
+                            if entry.reference_count() == 0 {
+                                drop(cache_guard);
+                                cache_clone.invalidate(&cache_key_clone);
+                                debug!("🗑️ [AUTO-DISPOSE] Disposed provider: {}", cache_key_clone);
+                            } else {
+                                debug!(
+                                    "🔄 [AUTO-DISPOSE] Disposal skipped (provider in use): {}",
+                                    cache_key_clone
+                                );
+                            }
                         }
                     }
-                }
-            });
+                });
 
-            timers.insert(cache_key, timer);
-        }
-        
-        // In WASM, auto-disposal is disabled for compatibility
-        #[cfg(target_family = "wasm")]
-        {
-            let _ = (cache_key, dispose_delay); // Silence unused variable warnings
+                timers.insert(cache_key, timer);
+            }
+
+            #[cfg(target_family = "wasm")]
+            {
+                // For WASM, use dioxus spawn for disposal timers
+                let cache_clone = cache.clone();
+                let cache_key_clone = cache_key.clone();
+
+                spawn(async move {
+                    time::sleep(dispose_delay).await;
+
+                    // Check if the provider can still be disposed
+                    if let Ok(cache_guard) = cache_clone.cache.lock() {
+                        if let Some(entry) = cache_guard.get(&cache_key_clone) {
+                            if entry.reference_count() == 0 {
+                                drop(cache_guard);
+                                cache_clone.invalidate(&cache_key_clone);
+                                debug!("🗑️ [AUTO-DISPOSE] Disposed provider: {}", cache_key_clone);
+                            } else {
+                                debug!(
+                                    "🔄 [AUTO-DISPOSE] Disposal skipped (provider in use): {}",
+                                    cache_key_clone
+                                );
+                            }
+                        }
+                    }
+                });
+
+                // Store dummy entry for consistency
+                timers.insert(cache_key, ());
+            }
         }
     }
 
     /// Cancel disposal timer for a provider (called when provider is accessed again)
     pub fn cancel_disposal(&self, cache_key: &str) {
-        #[cfg(not(target_family = "wasm"))]
         if let Ok(mut timers) = self.disposal_timers.lock() {
             if let Some(timer) = timers.remove(cache_key) {
-                timer.abort();
-                debug!("🔄 [AUTO-DISPOSE] Cancelled disposal for: {}", cache_key);
+                #[cfg(not(target_family = "wasm"))]
+                {
+                    timer.abort();
+                    debug!("🔄 [AUTO-DISPOSE] Cancelled disposal for: {}", cache_key);
+                }
+                
+                // In WASM, we can't cancel individual disposal tasks
+                // They will complete but check if the provider is still unused
+                #[cfg(target_family = "wasm")]
+                {
+                    let _ = timer; // Silence unused variable warning
+                    debug!("🔄 [AUTO-DISPOSE] Noted disposal cancellation for: {}", cache_key);
+                }
             }
-        }
-        
-        // In WASM, auto-disposal is disabled for compatibility
-        #[cfg(target_family = "wasm")]
-        {
-            let _ = cache_key; // Silence unused variable warning
         }
     }
 
