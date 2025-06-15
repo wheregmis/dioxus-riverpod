@@ -546,6 +546,37 @@ fn setup_interval_task_core<P, Param>(
     }
 }
 
+/// Sets up automatic stale-checking task for SWR providers
+fn setup_stale_check_task_core<P, Param>(
+    provider: &P,
+    param: &Param,
+    cache_key: &str,
+    cache: &ProviderCache,
+    refresh_registry: &RefreshRegistry,
+) where
+    P: Provider<Param> + Clone + Send,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    if let Some(stale_time) = provider.stale_time() {
+        let cache_clone = cache.clone();
+        let provider_clone = provider.clone();
+        let param_clone = param.clone();
+        let cache_key_clone = cache_key.to_string();
+        let refresh_registry_clone = refresh_registry.clone();
+
+        refresh_registry.start_stale_check_task(cache_key, stale_time, move || {
+            // Check if data is stale and trigger revalidation if needed
+            check_and_handle_swr_core(
+                &provider_clone,
+                &param_clone,
+                &cache_key_clone,
+                &cache_clone,
+                &refresh_registry_clone,
+            );
+        });
+    }
+}
+
 /// Core provider implementation that handles all the common logic
 fn use_provider_core<P, Param>(provider: P, param: Param) -> Signal<AsyncState<P::Output, P::Error>>
 where
@@ -575,12 +606,15 @@ where
     // SWR staleness checking - runs on every render to check for stale data
     check_and_handle_swr_core(&provider, &param, &cache_key, &cache, &refresh_registry);
 
-    // Use memo with reactive dependencies to track changes automatically  
+    // Use memo with reactive dependencies to track changes automatically
     let _execution_memo = use_memo(use_reactive!(|(provider, param)| {
         let cache_key = provider.id(&param);
         let cache_expiration = provider.cache_expiration();
 
-        debug!("🔄 [USE_PROVIDER] Memo executing for key: {} with param: {:?}", cache_key, param);
+        debug!(
+            "🔄 [USE_PROVIDER] Memo executing for key: {} with param: {:?}",
+            cache_key, param
+        );
 
         // Subscribe to refresh events for this cache key if we have a reactive context
         if let Some(reactive_context) = ReactiveContext::current() {
@@ -595,6 +629,9 @@ where
 
         // Set up interval task if provider has interval configured
         setup_interval_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
+
+        // Set up stale check task if provider has stale time configured
+        setup_stale_check_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
 
         // Check cache first - serve any available data (fresh or stale)
         if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {

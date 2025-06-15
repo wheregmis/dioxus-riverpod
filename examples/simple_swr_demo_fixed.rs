@@ -108,18 +108,10 @@ struct Post {
 #[component]
 fn SwrDemo() -> Element {
     let mut selected_user_id = use_signal(|| 1u32);
-    let mut timer_count = use_signal(|| 0u32);
 
-    // Timer to force re-renders every second so stale checking happens
-    // This simulates a real app where components re-render due to other reactive changes
-    use_future(move || async move {
-        loop {
-            sleep(Duration::from_millis(1000)).await;
-            timer_count.with_mut(|count| *count += 1);
-        }
-    });
-
-    // SWR providers - notice how they return immediately with cached data after initial load
+    // SWR providers - now with automatic staleness checking built into the library!
+    // No more manual timers needed - the library automatically checks for stale data
+    // and triggers revalidation in the background when data becomes stale.
     let user_profile = use_provider(fetch_user_profile, ());
     let user_posts = use_provider(fetch_user_posts, (*selected_user_id.read(),));
 
@@ -137,7 +129,7 @@ fn SwrDemo() -> Element {
                 div { class: "stale-time-info",
                     span { class: "info-badge", "Profile stale time: 3s" }
                     span { class: "info-badge", "Posts stale time: 2s" }
-                    span { class: "info-badge", "Timer: {timer_count.read()}" }
+                    span { class: "info-badge", "Auto SWR: ✅ Active" }
                 }
             }
 
@@ -194,7 +186,7 @@ fn SwrDemo() -> Element {
                                     p { class: "last-seen", "🕒 {profile.last_seen}" }
                                 }
                             }
-                        }
+                        },
                     }
                 }
 
@@ -218,7 +210,7 @@ fn SwrDemo() -> Element {
                                     p { class: "more-posts", "... and {posts.len() - 2} more posts" }
                                 }
                             }
-                        }
+                        },
                     }
                 }
             }
