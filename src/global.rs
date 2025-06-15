@@ -5,11 +5,7 @@
 
 use std::sync::OnceLock;
 
-use crate::{
-    cache::ProviderCache,
-    disposal::DisposalRegistry,
-    refresh::RefreshRegistry,
-};
+use crate::{cache::ProviderCache, disposal::DisposalRegistry, refresh::RefreshRegistry};
 
 /// Global singleton instance of the provider cache
 static GLOBAL_CACHE: OnceLock<ProviderCache> = OnceLock::new();
@@ -38,7 +34,7 @@ static GLOBAL_DISPOSAL_REGISTRY: OnceLock<DisposalRegistry> = OnceLock::new();
 ///     // Launch your app
 ///     dioxus::launch(app);
 /// }
-/// 
+///
 /// #[component]
 /// fn app() -> Element {
 ///     rsx! {
@@ -49,14 +45,13 @@ static GLOBAL_DISPOSAL_REGISTRY: OnceLock<DisposalRegistry> = OnceLock::new();
 pub fn init_global_providers() {
     // Initialize cache first
     let cache = GLOBAL_CACHE.get_or_init(ProviderCache::new);
-    
+
     // Initialize refresh registry
     let _refresh_registry = GLOBAL_REFRESH_REGISTRY.get_or_init(RefreshRegistry::new);
-    
+
     // Initialize disposal registry with reference to cache
-    let _disposal_registry = GLOBAL_DISPOSAL_REGISTRY.get_or_init(|| {
-        DisposalRegistry::new(cache.clone())
-    });
+    let _disposal_registry =
+        GLOBAL_DISPOSAL_REGISTRY.get_or_init(|| DisposalRegistry::new(cache.clone()));
 }
 
 /// Get the global provider cache instance
@@ -68,7 +63,9 @@ pub fn init_global_providers() {
 ///
 /// Panics if `init_global_providers()` has not been called yet.
 pub fn get_global_cache() -> &'static ProviderCache {
-    GLOBAL_CACHE.get().expect("Global providers not initialized. Call init_global_providers() first.")
+    GLOBAL_CACHE
+        .get()
+        .expect("Global providers not initialized. Call init_global_providers() first.")
 }
 
 /// Get the global refresh registry instance
@@ -80,7 +77,9 @@ pub fn get_global_cache() -> &'static ProviderCache {
 ///
 /// Panics if `init_global_providers()` has not been called yet.
 pub fn get_global_refresh_registry() -> &'static RefreshRegistry {
-    GLOBAL_REFRESH_REGISTRY.get().expect("Global providers not initialized. Call init_global_providers() first.")
+    GLOBAL_REFRESH_REGISTRY
+        .get()
+        .expect("Global providers not initialized. Call init_global_providers() first.")
 }
 
 /// Get the global disposal registry instance
@@ -92,14 +91,16 @@ pub fn get_global_refresh_registry() -> &'static RefreshRegistry {
 ///
 /// Panics if `init_global_providers()` has not been called yet.
 pub fn get_global_disposal_registry() -> &'static DisposalRegistry {
-    GLOBAL_DISPOSAL_REGISTRY.get().expect("Global providers not initialized. Call init_global_providers() first.")
+    GLOBAL_DISPOSAL_REGISTRY
+        .get()
+        .expect("Global providers not initialized. Call init_global_providers() first.")
 }
 
 /// Check if global providers have been initialized
 pub fn is_initialized() -> bool {
-    GLOBAL_CACHE.get().is_some() && 
-    GLOBAL_REFRESH_REGISTRY.get().is_some() && 
-    GLOBAL_DISPOSAL_REGISTRY.get().is_some()
+    GLOBAL_CACHE.get().is_some()
+        && GLOBAL_REFRESH_REGISTRY.get().is_some()
+        && GLOBAL_DISPOSAL_REGISTRY.get().is_some()
 }
 
 /// Reset global providers (mainly for testing)
@@ -126,11 +127,11 @@ mod tests {
     #[test]
     fn test_global_provider_initialization() {
         assert!(!is_initialized());
-        
+
         init_global_providers();
-        
+
         assert!(is_initialized());
-        
+
         // Test that we can get all instances
         let _cache = get_global_cache();
         let _refresh = get_global_refresh_registry();
@@ -144,7 +145,7 @@ mod tests {
         if is_initialized() {
             panic!("Global providers not initialized"); // Manually trigger expected panic
         }
-        
+
         // This should panic since we haven't called init_global_providers()
         let _cache = get_global_cache();
     }

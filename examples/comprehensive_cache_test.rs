@@ -16,7 +16,7 @@
 //! - Performance monitoring
 
 use dioxus::prelude::*;
-use dioxus_riverpod::{prelude::*, global::init_global_providers};
+use dioxus_riverpod::{global::init_global_providers, prelude::*};
 use std::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
@@ -314,7 +314,7 @@ fn generate_messages(chat_id: u32, call_number: u32) -> Vec<Message> {
 }
 
 /// Main comprehensive demo component
-/// 
+///
 /// ✨ **Global Provider Benefits Demonstrated:**
 /// - No RiverpodProvider wrapper needed
 /// - All providers automatically use global cache
@@ -363,7 +363,7 @@ fn ComprehensiveCacheTest() -> Element {
 
             div { class: "demo-controls",
                 h3 { "🌐 Global Provider Test Controls" }
-                p { class: "global-info", 
+                p { class: "global-info",
                     "✨ All providers now use application-wide global cache - no context providers needed!"
                 }
                 div { class: "control-sections",
@@ -918,9 +918,9 @@ fn app() -> Element {
 fn main() {
     // Initialize global providers for application-wide cache management
     init_global_providers();
-    
+
     println!("🚀 Starting Comprehensive Cache Test with Global Providers");
     println!("🌐 Using global provider management - no context wrappers needed!");
-    
+
     launch(app);
 }

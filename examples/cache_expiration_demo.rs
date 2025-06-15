@@ -496,7 +496,7 @@ fn app() -> Element {
 fn main() {
     // Initialize tracing for debug logs
     tracing_subscriber::fmt::init();
-    
+
     // Initialize global providers at application startup
     dioxus_riverpod::global::init_global_providers();
 

@@ -1,23 +1,33 @@
-//! # Provider Hooks
+//! # Global Provider Hooks
 //!
-//! This module provides the main hooks and traits for working with providers in Dioxus.
+//! This module provides the main hooks and traits for working with global providers in Dioxus.
 //! It includes the core Provider trait, the unified hook system for both parameterized
-//! and non-parameterized providers, and utility hooks for cache management.
+//! and non-parameterized providers, and utility hooks for global cache management.
+//!
+//! **⚠️ Global Initialization Required**: All hooks in this module require
+//! `dioxus_riverpod::global::init_global_providers()` to be called at application startup.
 //!
 //! ## Key Features
 //!
+//! - **Global State Management**: Application-wide provider state
 //! - **Provider Trait**: Unified interface for all provider types
-//! - **Automatic Caching**: Built-in caching with configurable expiration
+//! - **Automatic Caching**: Built-in global caching with configurable expiration
 //! - **Stale-While-Revalidate (SWR)**: Background updates while serving stale data
 //! - **Auto-Dispose**: Automatic cleanup of unused providers
 //! - **Interval Refresh**: Automatic refresh at specified intervals
 //! - **Cross-Platform**: Works on both web and desktop using dioxus tasks
 //!
-//! ## Usage
+//! ## Quick Start
 //!
 //! ```rust,no_run
 //! use dioxus::prelude::*;
-//! use dioxus_riverpod::prelude::*;
+//! use dioxus_riverpod::{prelude::*, global::init_global_providers};
+//!
+//! fn main() {
+//!     // REQUIRED: Initialize global providers
+//!     init_global_providers();
+//!     dioxus::launch(App);
+//! }
 //!
 //! #[derive(Clone, PartialEq)]
 //! struct DataProvider;
@@ -36,12 +46,19 @@
 //! }
 //!
 //! #[component]
+//! fn App() -> Element {
+//!     rsx! { MyComponent {} }
+//! }
+//!
+//! #[component]
 //! fn MyComponent() -> Element {
-//!     // Simple provider (no parameters)
+//!     // Use provider directly - global cache handles everything
 //!     let data = use_provider(DataProvider, ());
 //!
-//!     rsx! {
-//!         div { "Component content" }
+//!     match *data.read() {
+//!         AsyncState::Loading => rsx! { div { "Loading..." } },
+//!         AsyncState::Success(ref value) => rsx! { div { "{value}" } },
+//!         AsyncState::Error(_) => rsx! { div { "Error occurred" } },
 //!     }
 //! }
 //! ```
@@ -53,8 +70,8 @@ use tracing::debug;
 use crate::{
     cache::{AsyncState, ProviderCache},
     disposal::DisposalRegistry,
+    global::{get_global_cache, get_global_disposal_registry, get_global_refresh_registry},
     refresh::RefreshRegistry,
-    global::{get_global_cache, get_global_refresh_registry, get_global_disposal_registry, is_initialized},
 };
 
 /// A unified trait for defining providers - async operations that return data
@@ -165,73 +182,44 @@ where
     }
 }
 
-/// Get the provider cache, preferring global if available, falling back to context
+/// Get the provider cache - requires global providers to be initialized
 fn get_provider_cache() -> ProviderCache {
-    if is_initialized() {
-        get_global_cache().clone()
-    } else {
-        use_context::<ProviderCache>()
-    }
+    get_global_cache().clone()
 }
 
-/// Get the refresh registry, preferring global if available, falling back to context
+/// Get the refresh registry - requires global providers to be initialized
 fn get_refresh_registry() -> RefreshRegistry {
-    if is_initialized() {
-        get_global_refresh_registry().clone()
-    } else {
-        use_context::<RefreshRegistry>()
-    }
+    get_global_refresh_registry().clone()
 }
 
-/// Get the disposal registry, preferring global if available, falling back to context
+/// Get the disposal registry - requires global providers to be initialized
 fn get_disposal_registry() -> Option<DisposalRegistry> {
-    if is_initialized() {
-        Some(get_global_disposal_registry().clone())
-    } else {
-        // Safely try to get disposal registry from context, returning None if not available
-        // In Dioxus, use_context panics if the context doesn't exist, so we need to handle this differently
-        // For now, return None when not using global providers - this maintains backward compatibility
-        None
-    }
+    Some(get_global_disposal_registry().clone())
 }
 
 /// Hook to access the provider cache for manual cache management
 ///
-/// This hook now automatically uses global cache if available, or falls back to context-based cache.
-/// This provides seamless migration from context-based to global cache management.
-///
-/// This provides direct access to the underlying cache, allowing for manual
+/// This hook provides direct access to the global provider cache for manual
 /// invalidation, clearing, and other cache operations.
 ///
-/// ## Migration
+/// ## Global Providers Required
 ///
-/// **Old approach (context-based):**
-/// ```rust,no_run
-/// use dioxus_riverpod::prelude::*;
-/// 
-/// #[component]
-/// fn App() -> Element {
-///     rsx! {
-///         RiverpodProvider {
-///             MyComponent {}
-///         }
-///     }
-/// }
-/// ```
+/// You must call `init_global_providers()` at application startup before using any provider hooks.
 ///
-/// **New approach (global):**
+/// ## Setup
+///
 /// ```rust,no_run
 /// use dioxus_riverpod::{prelude::*, global::init_global_providers};
-/// 
+///
 /// fn main() {
 ///     init_global_providers();
-///     launch(App);
+///     dioxus::launch(App);
 /// }
-/// 
+///
 /// #[component]
 /// fn App() -> Element {
 ///     rsx! {
-///         MyComponent {}  // No provider wrapper needed!
+///         MyComponent {}
 ///     }
 /// }
 /// ```
@@ -264,7 +252,7 @@ pub fn use_provider_cache() -> ProviderCache {
 /// specified provider and parameters, and trigger a refresh of all components
 /// using that provider.
 ///
-/// Now works with both global and context-based cache management.
+/// Requires global providers to be initialized with `init_global_providers()`.
 ///
 /// ## Example
 ///
@@ -321,7 +309,7 @@ where
 /// Returns a function that, when called, will clear all cached provider data
 /// and trigger a refresh of all providers currently in use.
 ///
-/// Now works with both global and context-based cache management.
+/// Requires global providers to be initialized with `init_global_providers()`.
 ///
 /// ## Example
 ///
@@ -356,7 +344,7 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 /// This provides access to the disposal registry, allowing for manual control
 /// over the auto-dispose functionality.
 ///
-/// Now works with both global and context-based disposal management.
+/// Requires global providers to be initialized with `init_global_providers()`.
 ///
 /// ## Example
 ///
@@ -379,8 +367,6 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 pub fn use_disposal_registry() -> Option<DisposalRegistry> {
     get_disposal_registry()
 }
-
-
 
 /// Trait for unified provider usage - automatically handles providers with and without parameters
 ///

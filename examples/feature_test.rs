@@ -1,12 +1,12 @@
 //! # Cross-Platform Web Features Test
-//! 
+//!
 //! This example demonstrates all dioxus-riverpod features working
 //! seamlessly on both web (WASM) and desktop platforms:
 //! - Interval-based auto-refresh
 //! - Auto-dispose for memory management  
 //! - Stale-while-revalidate (SWR) pattern
 //! - Cache expiration policies
-//! 
+//!
 //! **Updated to use Global Providers**: This example now uses the new global provider
 //! system for simplified setup. No RiverpodProvider wrapper component needed!
 
@@ -65,7 +65,7 @@ fn FeatureTest() -> Element {
     let auto_dispose_data = use_provider(fetch_auto_dispose_data, ());
     let swr_data = use_provider(fetch_swr_data, ());
     let cached_data = use_provider(fetch_cached_data, ());
-    
+
     // Get refresh functions for manual testing
     let refresh_live = use_invalidate_provider(fetch_live_data, ());
     let refresh_swr = use_invalidate_provider(fetch_swr_data, ());
@@ -141,20 +141,21 @@ fn FeatureCard(
 ) -> Element {
     let emoji = match title.as_str() {
         "Interval Provider" => "📡",
-        "Auto-Dispose Provider" => "🗑️", 
+        "Auto-Dispose Provider" => "🗑️",
         "SWR Provider" => "🔄",
         "Cache Expiration Provider" => "💾",
-        _ => "⚡"
+        _ => "⚡",
     };
-    
-    let card_id = title.chars()
+
+    let card_id = title
+        .chars()
         .filter(|c| c.is_ascii_alphabetic())
         .collect::<String>()
         .to_lowercase();
-    
+
     let status_class = match &*data.read() {
         AsyncState::Loading => "status loading",
-        AsyncState::Error(_) => "status error", 
+        AsyncState::Error(_) => "status error",
         AsyncState::Success(_) => "status success",
     };
 
@@ -211,6 +212,6 @@ fn app() -> Element {
 fn main() {
     // Initialize global providers at application startup
     dioxus_riverpod::global::init_global_providers();
-    
+
     launch(app);
 }

@@ -668,6 +668,6 @@ fn app() -> Element {
 fn main() {
     // Initialize global providers at application startup
     dioxus_riverpod::global::init_global_providers();
-    
+
     launch(app);
 }
