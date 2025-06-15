@@ -17,6 +17,7 @@ struct ProviderArgs {
     stale_time: Option<Duration>,
     auto_dispose: Option<bool>,
     dispose_delay: Option<Duration>,
+    inject: Vec<syn::Type>, // New: list of types to inject
 }
 
 impl Parse for ProviderArgs {
@@ -63,6 +64,13 @@ impl Parse for ProviderArgs {
                         syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
                     })?;
                     args.dispose_delay = Some(duration);
+                }
+                "inject" => {
+                    // Parse injection types: inject = [Type1, Type2, ...]
+                    let content;
+                    syn::bracketed!(content in input);
+                    let types = content.parse_terminated(syn::Type::parse, Token![,])?;
+                    args.inject = types.into_iter().collect();
                 }
                 _ => return Err(syn::Error::new_spanned(ident, "Unknown argument")),
             }
@@ -136,6 +144,9 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
         ..
     } = &info;
 
+    // Generate enhanced function body with dependency injection
+    let enhanced_fn_block = generate_dependency_injection(&provider_args.inject, fn_block);
+
     // Generate interval and cache expiration implementations
     let interval_impl = generate_interval_impl(&provider_args);
     let cache_expiration_impl = generate_cache_expiration_impl(&provider_args);
@@ -154,7 +165,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
 
             impl #struct_name {
                 #fn_vis async fn call() -> Result<#output_type, #error_type> {
-                    #fn_block
+                    #enhanced_fn_block
                 }
             }
 
@@ -192,7 +203,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
 
                 impl #struct_name {
                     #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
-                        #fn_block
+                        #enhanced_fn_block
                     }
                 }
 
@@ -228,7 +239,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
 
                 impl #struct_name {
                     #fn_vis async fn call(#(#param_names: #param_types),*) -> Result<#output_type, #error_type> {
-                        #fn_block
+                        #enhanced_fn_block
                     }
                 }
 
@@ -467,4 +478,34 @@ fn to_pascal_case(s: &str) -> String {
             }
         })
         .collect()
+}
+
+/// Generate dependency injection code for the function
+fn generate_dependency_injection(inject_types: &[syn::Type], original_block: &syn::Block) -> syn::Block {
+    if inject_types.is_empty() {
+        return original_block.clone();
+    }
+
+    // Generate injection statements
+    let mut injection_stmts = Vec::new();
+    
+    for (i, inject_type) in inject_types.iter().enumerate() {
+        let var_name = syn::Ident::new(&format!("injected_{}", i), proc_macro2::Span::call_site());
+        
+        let injection_stmt: syn::Stmt = syn::parse_quote! {
+            let #var_name = ::dioxus_riverpod::injection::inject::<#inject_type>()
+                .map_err(|e| format!("Dependency injection failed for {}: {}", stringify!(#inject_type), e))?;
+        };
+        
+        injection_stmts.push(injection_stmt);
+    }
+
+    // Create new block with injection statements + original statements
+    let mut new_stmts = injection_stmts;
+    new_stmts.extend(original_block.stmts.iter().cloned());
+
+    syn::Block {
+        brace_token: original_block.brace_token,
+        stmts: new_stmts,
+    }
 }

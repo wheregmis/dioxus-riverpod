@@ -575,10 +575,12 @@ where
     // SWR staleness checking - runs on every render to check for stale data
     check_and_handle_swr_core(&provider, &param, &cache_key, &cache, &refresh_registry);
 
-    // Use memo with reactive dependencies to track changes automatically
-    let _execution_memo = use_memo(move || {
+    // Use memo with reactive dependencies to track changes automatically  
+    let _execution_memo = use_memo(use_reactive!(|(provider, param)| {
         let cache_key = provider.id(&param);
         let cache_expiration = provider.cache_expiration();
+
+        debug!("🔄 [USE_PROVIDER] Memo executing for key: {} with param: {:?}", cache_key, param);
 
         // Subscribe to refresh events for this cache key if we have a reactive context
         if let Some(reactive_context) = ReactiveContext::current() {
@@ -638,7 +640,7 @@ where
                 Err(error) => state_for_async.set(AsyncState::Error(error)),
             }
         });
-    });
+    }));
 
     state
 }
@@ -668,6 +670,45 @@ where
     fn use_provider(self, args: (Param,)) -> Signal<AsyncState<Self::Output, Self::Error>> {
         let param = args.0;
         use_provider_core(self, param)
+    }
+}
+
+/// Implementation for providers with a single u32 parameter (without tuple wrapper)
+impl<P> UseProvider<u32> for P
+where
+    P: Provider<u32> + Send,
+{
+    type Output = P::Output;
+    type Error = P::Error;
+
+    fn use_provider(self, args: u32) -> Signal<AsyncState<Self::Output, Self::Error>> {
+        use_provider_core(self, args)
+    }
+}
+
+/// Implementation for providers with a single String parameter (without tuple wrapper)
+impl<P> UseProvider<String> for P
+where
+    P: Provider<String> + Send,
+{
+    type Output = P::Output;
+    type Error = P::Error;
+
+    fn use_provider(self, args: String) -> Signal<AsyncState<Self::Output, Self::Error>> {
+        use_provider_core(self, args)
+    }
+}
+
+/// Implementation for providers with a single i32 parameter (without tuple wrapper)
+impl<P> UseProvider<i32> for P
+where
+    P: Provider<i32> + Send,
+{
+    type Output = P::Output;
+    type Error = P::Error;
+
+    fn use_provider(self, args: i32) -> Signal<AsyncState<Self::Output, Self::Error>> {
+        use_provider_core(self, args)
     }
 }
 
