@@ -29,20 +29,9 @@
 //!     dioxus::launch(App);
 //! }
 //!
-//! #[derive(Clone, PartialEq)]
-//! struct DataProvider;
-//!
-//! impl Provider<()> for DataProvider {
-//!     type Output = String;
-//!     type Error = String;
-//!
-//!     async fn run(&self, _: ()) -> Result<Self::Output, Self::Error> {
-//!         Ok("data".to_string())
-//!     }
-//!
-//!     fn id(&self, _: &()) -> String {
-//!         "data".to_string()
-//!     }
+//! #[provider]
+//! async fn data_provider() -> Result<String, String> {
+//!     Ok("data".to_string())
 //! }
 //!
 //! #[component]
@@ -53,7 +42,7 @@
 //! #[component]
 //! fn MyComponent() -> Element {
 //!     // Use provider directly - global cache handles everything
-//!     let data = use_provider(DataProvider, ());
+//!     let data = use_provider(data_provider(), ());
 //!
 //!     match *data.read() {
 //!         AsyncState::Loading => rsx! { div { "Loading..." } },
@@ -99,31 +88,16 @@ use crate::{
 /// use dioxus_riverpod::prelude::*;
 /// use std::time::Duration;
 ///
-/// #[derive(Clone, PartialEq)]
-/// struct DataProvider;
+/// #[provider(stale_time = "1m", cache_expiration = "5m")]
+/// async fn data_provider() -> Result<String, String> {
+///     // Fetch data from API
+///     Ok("Hello, World!".to_string())
+/// }
 ///
-/// impl Provider<()> for DataProvider {
-///     type Output = String;
-///     type Error = String;
-///
-///     async fn run(&self, _: ()) -> Result<Self::Output, Self::Error> {
-///         // Fetch data from API
-///         Ok("Hello, World!".to_string())
-///     }
-///
-///     fn id(&self, _: &()) -> String {
-///         "data_provider".to_string()
-///     }
-///
-///     // Optional: Cache for 5 minutes
-///     fn cache_expiration(&self) -> Option<Duration> {
-///         Some(Duration::from_secs(300))
-///     }
-///
-///     // Optional: Consider stale after 1 minute
-///     fn stale_time(&self) -> Option<Duration> {
-///         Some(Duration::from_secs(60))
-///     }
+/// #[component]
+/// fn Consumer() -> Element {
+///     let data = use_provider(data_provider(), ());
+///     // ...
 /// }
 /// ```
 pub trait Provider<Param = ()>: Clone + PartialEq + 'static
@@ -253,26 +227,14 @@ pub fn use_provider_cache() -> ProviderCache {
 /// use dioxus::prelude::*;
 /// use dioxus_riverpod::prelude::*;
 ///
-/// #[derive(Clone, PartialEq)]
-/// struct UserProvider;
-///
-/// impl Provider<u32> for UserProvider {
-///     type Output = String;
-///     type Error = String;
-///
-///     async fn run(&self, user_id: u32) -> Result<Self::Output, Self::Error> {
-///         Ok(format!("User {}", user_id))
-///     }
-///
-///     fn id(&self, user_id: &u32) -> String {
-///         format!("user_{}", user_id)
-///     }
+/// #[provider]
+/// async fn user_provider(id: u32) -> Result<String, String> {
+///     Ok(format!("User {}", id))
 /// }
 ///
 /// #[component]
 /// fn MyComponent() -> Element {
-///     let user_id = 1;
-///     let invalidate_user = use_invalidate_provider(UserProvider, user_id);
+///     let invalidate_user = use_invalidate_provider(user_provider(), 1);
 ///     
 ///     rsx! {
 ///         button {
