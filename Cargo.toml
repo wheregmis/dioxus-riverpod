@@ -26,7 +26,8 @@ dioxus-lib = { version = "0.6", default-features = false, features = [
     "hooks",
     "signals",
 ] }
-dioxus-provider-macros = { path = "./dioxus-provider-macros" }
+# dioxus-provider-macros = { path = "./dioxus-provider-macros" }
+dioxus-provider-macros = "0.1.0"
 tracing = "0.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
