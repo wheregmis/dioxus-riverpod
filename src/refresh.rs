@@ -180,12 +180,8 @@ impl RefreshRegistry {
                     if task_type == TaskType::IntervalRefresh && interval < *current_interval {
                         tasks.remove(&task_key);
                         true
-                    } else if task_type == TaskType::StaleCheck
-                        || task_type == TaskType::CacheExpiration
-                    {
-                        false // Don't replace stale check or cache expiration tasks
                     } else {
-                        false // Keep existing shorter interval
+                        false // Don't replace stale check or cache expiration tasks
                     }
                 }
             };

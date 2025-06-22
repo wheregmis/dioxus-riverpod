@@ -44,11 +44,9 @@ cargo run --example interval_refresh_demo
 ```rust,no_run
 use dioxus_riverpod::global::init_global_providers;
 
-fn main() {
-    // This is required for all provider hooks to work
-    init_global_providers();
-    dioxus::launch(App);
-}
+// This is required for all provider hooks to work
+init_global_providers();
+dioxus::launch(App);
 ```
 
 2.  **Create a provider** using the `#[provider]` macro:

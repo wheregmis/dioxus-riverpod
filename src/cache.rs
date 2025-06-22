@@ -327,23 +327,11 @@ impl ProviderCache {
 
     /// Perform comprehensive cache maintenance
     pub fn maintain(&self) -> CacheMaintenanceStats {
-        let mut stats = CacheMaintenanceStats::default();
-
-        // Clean up unused entries
-        stats.unused_removed = self.cleanup_unused_entries(DEFAULT_UNUSED_THRESHOLD);
-
-        // Evict LRU entries if cache is too large
-        stats.lru_evicted = self.evict_lru_entries(DEFAULT_MAX_CACHE_SIZE);
-
-        // Update total size
-        stats.final_size = self.size();
-
-        debug!(
-            "🔧 [CACHE-MAINTENANCE] Cleaned up {} unused entries, evicted {} LRU entries, final size: {}",
-            stats.unused_removed, stats.lru_evicted, stats.final_size
-        );
-
-        stats
+        CacheMaintenanceStats {
+            unused_removed: self.cleanup_unused_entries(DEFAULT_UNUSED_THRESHOLD),
+            lru_evicted: self.evict_lru_entries(DEFAULT_MAX_CACHE_SIZE),
+            final_size: self.size(),
+        }
     }
 
     /// Get cache statistics

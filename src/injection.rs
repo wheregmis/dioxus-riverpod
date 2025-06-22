@@ -1,6 +1,6 @@
 /*!
  * Global Dependency Injection System
- * 
+ *
  * Provides a type-safe way to register and access shared dependencies
  * that don't fit well as provider parameters (e.g., API clients, databases).
  */
@@ -28,13 +28,18 @@ impl DependencyRegistry {
     /// Register a dependency of type T
     pub fn register<T: Send + Sync + 'static>(&self, dependency: T) -> Result<(), String> {
         let type_id = TypeId::of::<T>();
-        let mut deps = self.dependencies.write()
+        let mut deps = self
+            .dependencies
+            .write()
             .map_err(|_| "Failed to acquire write lock on dependencies")?;
-        
+
         if deps.contains_key(&type_id) {
-            return Err(format!("Dependency of type {} already registered", std::any::type_name::<T>()));
+            return Err(format!(
+                "Dependency of type {} already registered",
+                std::any::type_name::<T>()
+            ));
         }
-        
+
         deps.insert(type_id, Arc::new(dependency));
         Ok(())
     }
@@ -42,29 +47,40 @@ impl DependencyRegistry {
     /// Get a dependency of type T
     pub fn get<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, String> {
         let type_id = TypeId::of::<T>();
-        let deps = self.dependencies.read()
+        let deps = self
+            .dependencies
+            .read()
             .map_err(|_| "Failed to acquire read lock on dependencies")?;
-        
-        let dependency = deps.get(&type_id)
-            .ok_or_else(|| format!("Dependency of type {} not found", std::any::type_name::<T>()))?;
-        
-        dependency
-            .clone()
-            .downcast::<T>()
-            .map_err(|_| format!("Failed to downcast dependency of type {}", std::any::type_name::<T>()))
+
+        let dependency = deps.get(&type_id).ok_or_else(|| {
+            format!(
+                "Dependency of type {} not found",
+                std::any::type_name::<T>()
+            )
+        })?;
+
+        dependency.clone().downcast::<T>().map_err(|_| {
+            format!(
+                "Failed to downcast dependency of type {}",
+                std::any::type_name::<T>()
+            )
+        })
     }
 
     /// Check if a dependency of type T is registered
     pub fn contains<T: Send + Sync + 'static>(&self) -> bool {
         let type_id = TypeId::of::<T>();
-        self.dependencies.read()
+        self.dependencies
+            .read()
             .map(|deps| deps.contains_key(&type_id))
             .unwrap_or(false)
     }
 
     /// Clear all dependencies (mainly for testing)
     pub fn clear(&self) -> Result<(), String> {
-        let mut deps = self.dependencies.write()
+        let mut deps = self
+            .dependencies
+            .write()
             .map_err(|_| "Failed to acquire write lock on dependencies")?;
         deps.clear();
         Ok(())
@@ -72,10 +88,12 @@ impl DependencyRegistry {
 
     /// Get all registered dependency type names (for debugging)
     pub fn list_types(&self) -> Result<Vec<String>, String> {
-        let deps = self.dependencies.read()
+        let deps = self
+            .dependencies
+            .read()
             .map_err(|_| "Failed to acquire read lock on dependencies")?;
-        
-        // Note: We can't easily get type names from TypeId, 
+
+        // Note: We can't easily get type names from TypeId,
         // so this is mainly useful for debugging count
         Ok(vec![format!("{} dependencies registered", deps.len())])
     }
@@ -83,33 +101,37 @@ impl DependencyRegistry {
 
 /// Initialize the global dependency registry
 pub fn init_dependency_injection() {
-    DEPENDENCY_REGISTRY.get_or_init(|| DependencyRegistry::new());
+    DEPENDENCY_REGISTRY.get_or_init(DependencyRegistry::new);
 }
 
 /// Register a global dependency
 pub fn register_dependency<T: Send + Sync + 'static>(dependency: T) -> Result<(), String> {
-    let registry = DEPENDENCY_REGISTRY.get()
+    let registry = DEPENDENCY_REGISTRY
+        .get()
         .ok_or("Dependency registry not initialized. Call init_dependency_injection() first.")?;
     registry.register(dependency)
 }
 
 /// Get a global dependency
 pub fn inject<T: Send + Sync + 'static>() -> Result<Arc<T>, String> {
-    let registry = DEPENDENCY_REGISTRY.get()
+    let registry = DEPENDENCY_REGISTRY
+        .get()
         .ok_or("Dependency registry not initialized. Call init_dependency_injection() first.")?;
     registry.get()
 }
 
 /// Check if a dependency is registered
 pub fn has_dependency<T: Send + Sync + 'static>() -> bool {
-    DEPENDENCY_REGISTRY.get()
+    DEPENDENCY_REGISTRY
+        .get()
         .map(|registry| registry.contains::<T>())
         .unwrap_or(false)
 }
 
 /// Clear all dependencies (mainly for testing)
 pub fn clear_dependencies() -> Result<(), String> {
-    let registry = DEPENDENCY_REGISTRY.get()
+    let registry = DEPENDENCY_REGISTRY
+        .get()
         .ok_or("Dependency registry not initialized")?;
     registry.clear()
 }
@@ -153,7 +175,7 @@ mod tests {
     #[test]
     fn test_dependency_injection() {
         init_dependency_injection();
-        
+
         // Clear any existing dependencies
         clear_dependencies().unwrap();
 
