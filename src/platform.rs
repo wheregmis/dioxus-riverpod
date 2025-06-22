@@ -92,9 +92,6 @@ pub mod config {
 
     /// Default unused entry threshold
     pub const DEFAULT_UNUSED_THRESHOLD: Duration = Duration::from_secs(300);
-
-    /// Default disposal delay
-    pub const DEFAULT_DISPOSE_DELAY: Duration = Duration::from_secs(30);
 }
 
 pub use config::*;

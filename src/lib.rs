@@ -2,7 +2,6 @@
 
 // Core modules
 pub mod cache;
-//pub mod disposal;
 pub mod global;
 
 pub mod hooks;
