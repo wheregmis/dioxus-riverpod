@@ -11,6 +11,8 @@ use std::{
 };
 use tracing::debug;
 
+use crate::platform::{DEFAULT_MAX_CACHE_SIZE, DEFAULT_UNUSED_THRESHOLD};
+
 // Platform-specific time imports
 #[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
@@ -68,6 +70,7 @@ pub struct CacheEntry {
     cached_at: Instant,
     reference_count: Arc<AtomicU32>,
     last_accessed: Arc<Mutex<Instant>>,
+    access_count: Arc<AtomicU32>,
 }
 
 impl CacheEntry {
@@ -78,14 +81,16 @@ impl CacheEntry {
             cached_at: now,
             reference_count: Arc::new(AtomicU32::new(0)),
             last_accessed: Arc::new(Mutex::new(now)),
+            access_count: Arc::new(AtomicU32::new(0)),
         }
     }
 
     pub fn get<T: Clone + Send + Sync + 'static>(&self) -> Option<T> {
-        // Update last accessed time
+        // Update last accessed time and access count
         if let Ok(mut last_accessed) = self.last_accessed.lock() {
             *last_accessed = Instant::now();
         }
+        self.access_count.fetch_add(1, Ordering::SeqCst);
         self.data.downcast_ref::<T>().cloned()
     }
 
@@ -112,6 +117,11 @@ impl CacheEntry {
         self.reference_count.load(Ordering::SeqCst)
     }
 
+    /// Get current access count
+    pub fn access_count(&self) -> u32 {
+        self.access_count.load(Ordering::SeqCst)
+    }
+
     /// Check if this entry hasn't been accessed for the given duration
     pub fn is_unused_for(&self, duration: Duration) -> bool {
         if let Ok(last_accessed) = self.last_accessed.lock() {
@@ -128,6 +138,11 @@ impl CacheEntry {
         } else {
             Duration::from_secs(0)
         }
+    }
+
+    /// Get the age of this entry
+    pub fn age(&self) -> Duration {
+        self.cached_at.elapsed()
     }
 }
 
@@ -201,6 +216,9 @@ impl ProviderCache {
             }
         }
 
+        // Get the data
+        let data = entry.get::<T>()?;
+
         // Check if stale
         let is_stale = if let Some(stale_duration) = stale_time {
             entry.is_stale(stale_duration)
@@ -208,17 +226,18 @@ impl ProviderCache {
             false
         };
 
-        entry.get::<T>().map(|data| (data, is_stale))
+        Some((data, is_stale))
     }
 
-    /// Set a value in the cache
+    /// Set a cached result by key
     pub fn set<T: Clone + Send + Sync + 'static>(&self, key: String, value: T) {
         if let Ok(mut cache) = self.cache.lock() {
-            cache.insert(key, CacheEntry::new(value));
+            cache.insert(key.clone(), CacheEntry::new(value));
+            debug!("📊 [CACHE-STORE] Stored data for key: {}", key);
         }
     }
 
-    /// Remove a value from the cache
+    /// Remove a cached result by key
     pub fn remove(&self, key: &str) -> bool {
         if let Ok(mut cache) = self.cache.lock() {
             cache.remove(key).is_some()
@@ -227,79 +246,171 @@ impl ProviderCache {
         }
     }
 
-    /// Invalidate (remove) a specific cache entry - alias for remove
+    /// Invalidate a cached result by key (alias for remove)
     pub fn invalidate(&self, key: &str) {
         self.remove(key);
+        debug!(
+            "🗑️ [CACHE-INVALIDATE] Invalidated cache entry for key: {}",
+            key
+        );
     }
 
-    /// Clear all cached values
+    /// Clear all cached results
     pub fn clear(&self) {
         if let Ok(mut cache) = self.cache.lock() {
+            let count = cache.len();
             cache.clear();
+            debug!("🗑️ [CACHE-CLEAR] Cleared {} cache entries", count);
         }
     }
 
-    /// Get the current cache size (number of entries)
+    /// Get the number of cached entries
     pub fn size(&self) -> usize {
-        if let Ok(cache) = self.cache.lock() {
-            cache.len()
-        } else {
-            0
-        }
+        self.cache.lock().map(|cache| cache.len()).unwrap_or(0)
     }
 
-    /// Remove entries that haven't been accessed for the specified duration
-    /// Returns the number of entries removed
+    /// Clean up unused entries based on access time
     pub fn cleanup_unused_entries(&self, unused_threshold: Duration) -> usize {
         if let Ok(mut cache) = self.cache.lock() {
-            let keys_to_remove: Vec<String> = cache
-                .iter()
-                .filter(|(_, entry)| entry.is_unused_for(unused_threshold))
-                .map(|(key, _)| key.clone())
-                .collect();
-
-            let removed_count = keys_to_remove.len();
-            for key in keys_to_remove {
-                cache.remove(&key);
-                debug!("🧹 [CLEANUP] Removed unused cache entry: {}", key);
+            let initial_size = cache.len();
+            cache.retain(|key, entry| {
+                let should_keep =
+                    !entry.is_unused_for(unused_threshold) || entry.reference_count() > 0;
+                if !should_keep {
+                    debug!("🧹 [CACHE-CLEANUP] Removing unused entry: {}", key);
+                }
+                should_keep
+            });
+            let removed = initial_size - cache.len();
+            if removed > 0 {
+                debug!("🧹 [CACHE-CLEANUP] Removed {} unused entries", removed);
             }
-
-            removed_count
+            removed
         } else {
             0
         }
     }
 
-    /// Remove the least recently used entries until cache size is under the limit
-    /// Returns the number of entries removed
+    /// Evict least recently used entries to maintain cache size limit
     pub fn evict_lru_entries(&self, max_size: usize) -> usize {
         if let Ok(mut cache) = self.cache.lock() {
             if cache.len() <= max_size {
                 return 0;
             }
 
-            // Collect entries with their last access times
-            let mut entries_with_access_time: Vec<(String, Duration)> = cache
-                .iter()
-                .map(|(key, entry)| (key.clone(), entry.time_since_last_access()))
-                .collect();
+            // Convert to vector for sorting
+            let mut entries: Vec<_> = cache.drain().collect();
 
-            // Sort by access time (oldest first)
-            entries_with_access_time.sort_by(|a, b| b.1.cmp(&a.1));
+            // Sort by last access time (oldest first)
+            entries.sort_by(|(_, a), (_, b)| {
+                a.time_since_last_access().cmp(&b.time_since_last_access())
+            });
 
-            // Remove oldest entries until we're under the limit
-            let entries_to_remove = cache.len() - max_size;
-            let mut removed_count = 0;
+            // Keep the most recently used entries
+            let to_keep = entries.split_off(entries.len().saturating_sub(max_size));
+            let evicted = entries.len();
 
-            for (key, _) in entries_with_access_time.iter().take(entries_to_remove) {
-                cache.remove(key);
-                removed_count += 1;
-                debug!("🗑️ [LRU-EVICT] Removed LRU cache entry: {}", key);
+            // Rebuild cache with kept entries
+            cache.extend(to_keep);
+
+            if evicted > 0 {
+                debug!(
+                    "🗑️ [LRU-EVICT] Evicted {} entries due to cache size limit",
+                    evicted
+                );
             }
-
-            removed_count
+            evicted
         } else {
             0
+        }
+    }
+
+    /// Perform comprehensive cache maintenance
+    pub fn maintain(&self) -> CacheMaintenanceStats {
+        let mut stats = CacheMaintenanceStats::default();
+
+        // Clean up unused entries
+        stats.unused_removed = self.cleanup_unused_entries(DEFAULT_UNUSED_THRESHOLD);
+
+        // Evict LRU entries if cache is too large
+        stats.lru_evicted = self.evict_lru_entries(DEFAULT_MAX_CACHE_SIZE);
+
+        // Update total size
+        stats.final_size = self.size();
+
+        debug!(
+            "🔧 [CACHE-MAINTENANCE] Cleaned up {} unused entries, evicted {} LRU entries, final size: {}",
+            stats.unused_removed, stats.lru_evicted, stats.final_size
+        );
+
+        stats
+    }
+
+    /// Get cache statistics
+    pub fn stats(&self) -> CacheStats {
+        if let Ok(cache) = self.cache.lock() {
+            let mut total_age = Duration::ZERO;
+            let mut total_accesses = 0;
+            let mut total_references = 0;
+
+            for entry in cache.values() {
+                total_age += entry.age();
+                total_accesses += entry.access_count();
+                total_references += entry.reference_count();
+            }
+
+            let entry_count = cache.len();
+            let avg_age = if entry_count > 0 {
+                total_age / entry_count as u32
+            } else {
+                Duration::ZERO
+            };
+
+            CacheStats {
+                entry_count,
+                total_accesses,
+                total_references,
+                avg_age,
+                total_size_bytes: entry_count * 1024, // Rough estimate
+            }
+        } else {
+            CacheStats::default()
+        }
+    }
+}
+
+/// Statistics for cache maintenance operations
+#[derive(Debug, Clone, Default)]
+pub struct CacheMaintenanceStats {
+    pub unused_removed: usize,
+    pub lru_evicted: usize,
+    pub final_size: usize,
+}
+
+/// General cache statistics
+#[derive(Debug, Clone, Default)]
+pub struct CacheStats {
+    pub entry_count: usize,
+    pub total_accesses: u32,
+    pub total_references: u32,
+    pub avg_age: Duration,
+    pub total_size_bytes: usize,
+}
+
+impl CacheStats {
+    pub fn avg_accesses_per_entry(&self) -> f64 {
+        if self.entry_count > 0 {
+            self.total_accesses as f64 / self.entry_count as f64
+        } else {
+            0.0
+        }
+    }
+
+    pub fn avg_references_per_entry(&self) -> f64 {
+        if self.entry_count > 0 {
+            self.total_references as f64 / self.entry_count as f64
+        } else {
+            0.0
         }
     }
 }

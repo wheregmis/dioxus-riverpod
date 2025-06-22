@@ -143,10 +143,17 @@ where
 
     /// Get a unique identifier for this provider instance with the given parameters
     ///
-    /// This ID is used for caching and invalidation. It should be unique for each
-    /// provider and parameter combination. For parameterized providers, include
-    /// the parameter values in the ID.
-    fn id(&self, param: &Param) -> String;
+    /// This ID is used for caching and invalidation. The default implementation
+    /// hashes the provider's type and parameters to generate a unique ID.
+    fn id(&self, param: &Param) -> String {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+
+        let mut hasher = DefaultHasher::new();
+        std::any::TypeId::of::<Self>().hash(&mut hasher);
+        param.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    }
 
     /// Get the interval duration for automatic refresh (None means no interval)
     ///
