@@ -197,6 +197,37 @@ cargo run --example comprehensive_demo
 cargo run --example swr_demo
 ```
 
+## Ecosystem & Alternatives
+
+### dioxus-query: For Complex, Type-Safe Data Management
+
+For more complex applications requiring advanced type safety, sophisticated caching strategies, and enterprise-grade data management, we highly recommend **[dioxus-query](https://github.com/marc2332/dioxus-query)** by [Marc](https://github.com/marc2332).
+
+**dioxus-query** is a mature, production-ready library that provides:
+
+- **Advanced Type Safety**: Compile-time guarantees for complex data relationships
+- **Sophisticated Caching**: Multi-level caching with intelligent invalidation strategies
+- **Query Dependencies**: Automatic dependency tracking and cascading updates
+- **Optimistic Updates**: Immediate UI updates with rollback on failure
+- **Background Synchronization**: Advanced background sync with conflict resolution
+- **Enterprise Features**: Built-in support for complex data patterns and edge cases
+
+**When to choose dioxus-query:**
+- Large-scale applications with complex data requirements
+- Teams requiring maximum type safety and compile-time guarantees
+- Applications with sophisticated caching and synchronization needs
+- Enterprise applications where data consistency is critical
+
+**When to choose dioxus-riverpod:**
+- Smaller to medium applications
+- Quick prototyping and development
+- Teams new to Dioxus state management
+- Applications where simplicity and ease of use are priorities
+
+### Acknowledgment
+
+Special thanks to [Marc](https://github.com/marc2332) for creating the excellent **dioxus-query** library, which has been a significant inspiration for this project. Marc's work on dioxus-query has helped establish best practices for data management in the Dioxus ecosystem, and we encourage users to explore both libraries to find the best fit for their specific use case.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to open an issue or submit a pull request.
