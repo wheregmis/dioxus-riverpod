@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.1...dioxus-provider-v0.0.2) - 2025-06-22
+
+### Other
+
+- Update README with development warning and clean up example
+
 ## [0.0.1] - 2024-12-19
 
 ### Added
