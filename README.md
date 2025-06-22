@@ -3,6 +3,9 @@
 [![Crates.io](https://img.shields.io/crates/v/dioxus-provider.svg)](https://crates.io/crates/dioxus-provider)
 [![Docs.rs](https://docs.rs/dioxus-provider/badge.svg)](https://docs.rs/dioxus-provider)
 
+> **⚠️ In Development**  
+> This library is currently in active development. The API may change before the first stable release. Please check the [changelog](./CHANGELOG.md) for the latest updates and breaking changes.
+
 **Effortless, powerful, and scalable data fetching and caching for Dioxus applications, inspired by [Riverpod for Flutter](https://riverpod.dev/).**
 
 `dioxus-provider` provides a simple yet robust way to manage data fetching, handle asynchronous operations, and cache data with minimal boilerplate. It is designed to feel native to Dioxus, integrating seamlessly with its component model and hooks system.

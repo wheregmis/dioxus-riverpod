@@ -8,7 +8,6 @@
 
 use dioxus::prelude::*;
 use dioxus_provider::prelude::*;
-use std::time::Duration;
 
 // Example dependencies that don't implement PartialEq/Hash
 #[derive(Clone)]
