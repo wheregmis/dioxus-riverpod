@@ -2,6 +2,12 @@
 name = "dioxus-provider-macros"
 version = "0.1.0"
 edition = "2024"
+description = "Procedural macros for dioxus-provider - declarative data fetching and caching for Dioxus applications"
+license = "MIT"
+authors = ["Sabin Regmi <get2sabin@gmail.com>"]
+repository = "https://github.com/wheregmis/dioxus-provider.git"
+keywords = ["dioxus", "macros", "proc-macro", "data-fetching", "caching"]
+categories = ["gui", "asynchronous", "web-programming"]
 
 [lib]
 proc-macro = true
