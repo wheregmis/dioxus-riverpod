@@ -11,6 +11,12 @@ repository = "https://github.com/wheregmis/dioxus-provider.git"
 keywords = ["dioxus", "data-fetching", "caching", "providers", "swr"]
 categories = ["gui", "asynchronous", "web-programming"]
 
+[workspace]
+members = [
+    ".",
+    "dioxus-provider-macros",
+]
+
 [features]
 default = []
 
