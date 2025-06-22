@@ -224,6 +224,53 @@ For more complex applications requiring advanced type safety, sophisticated cach
 - Teams new to Dioxus state management
 - Applications where simplicity and ease of use are priorities
 
+### dioxus-motion: For Smooth Animations and Transitions
+
+Looking to add beautiful animations to your Dioxus application? Check out **[dioxus-motion](https://github.com/wheregmis/dioxus-motion)** - a lightweight, cross-platform animation library also built by me.
+
+**dioxus-motion** provides:
+
+- **Cross-Platform Animations**: Works seamlessly on web, desktop, and mobile
+- **Declarative Animation API**: Write animations as data, not imperative code
+- **Page Transitions**: Smooth route transitions with `AnimatedOutlet`
+- **Spring Physics**: Natural, physics-based animations
+- **Custom Easing**: Extensive easing function support
+- **Type-Safe Animations**: Compile-time animation safety
+- **Extensible**: Implement `Animatable` trait for custom types
+
+**Perfect combination:**
+- Use **dioxus-riverpod** for state management and data fetching
+- Use **dioxus-motion** for smooth UI animations and transitions
+- Both libraries work together seamlessly in the same application
+
+```rust
+// Example: Combining dioxus-riverpod with dioxus-motion
+use dioxus_riverpod::prelude::*;
+use dioxus_motion::prelude::*;
+
+#[component]
+fn AnimatedUserCard(user_id: u32) -> Element {
+    // State management with dioxus-riverpod
+    let user_data = use_provider(fetch_user(), (user_id,));
+    
+    // Animation with dioxus-motion
+    let scale = use_motion(1.0f32);
+    
+    match &*user_data.read() {
+        AsyncState::Success(user) => rsx! {
+            div {
+                style: "transform: scale({scale.get_value()})",
+                onclick: move |_| {
+                    scale.animate_to(1.1, AnimationConfig::spring());
+                },
+                "Welcome, {user.name}!"
+            }
+        },
+        _ => rsx! { div { "Loading..." } }
+    }
+}
+```
+
 ### Acknowledgment
 
 Special thanks to [Marc](https://github.com/marc2332) for creating the excellent **dioxus-query** library, which has been a significant inspiration for this project. Marc's work on dioxus-query has helped establish best practices for data management in the Dioxus ecosystem, and we encourage users to explore both libraries to find the best fit for their specific use case.
