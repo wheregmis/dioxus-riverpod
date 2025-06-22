@@ -16,7 +16,7 @@
 //! - Global provider management (NEW!)
 
 use dioxus::prelude::*;
-use dioxus_riverpod::prelude::*;
+use dioxus_riverpod::{global::init_global_providers, prelude::*};
 use std::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
@@ -144,14 +144,14 @@ async fn fetch_user_cache_data(user_id: u32) -> Result<UserCacheData, String> {
 
 /// Data structures for our demo
 #[derive(Debug, Clone, PartialEq)]
-struct QuickData {
+pub struct QuickData {
     message: String,
     fetched_at: u64,
     expires_in: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct MediumData {
+pub struct MediumData {
     content: String,
     details: Vec<String>,
     fetched_at: u64,
@@ -159,7 +159,7 @@ struct MediumData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct LongData {
+pub struct LongData {
     title: String,
     description: String,
     metadata: DataMetadata,
@@ -168,14 +168,14 @@ struct LongData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct DataMetadata {
+pub struct DataMetadata {
     size_mb: u32,
     processing_time_ms: u32,
     version: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct UserCacheData {
+pub struct UserCacheData {
     user_id: u32,
     preferences: UserPreferences,
     activity_summary: String,
@@ -185,7 +185,7 @@ struct UserCacheData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct UserPreferences {
+pub struct UserPreferences {
     theme: String,
     language: String,
     notifications: bool,
@@ -214,16 +214,17 @@ fn CacheExpirationDemo() -> Element {
     });
 
     // Different cache expiration providers
-    let quick_data = use_provider(fetch_quick_expiring_data, ());
-    let medium_data = use_provider(fetch_medium_expiring_data, ());
-    let long_data = use_provider(fetch_long_expiring_data, ());
-    let user_data = use_provider(fetch_user_cache_data, (*selected_user_id.read(),));
+    let quick_data = use_provider(fetch_quick_expiring_data(), ());
+    let medium_data = use_provider(fetch_medium_expiring_data(), ());
+    let long_data = use_provider(fetch_long_expiring_data(), ());
+    let user_data = use_provider(fetch_user_cache_data(), (*selected_user_id.read(),));
 
     // Manual invalidation functions
-    let invalidate_quick = use_invalidate_provider(fetch_quick_expiring_data, ());
-    let invalidate_medium = use_invalidate_provider(fetch_medium_expiring_data, ());
-    let invalidate_long = use_invalidate_provider(fetch_long_expiring_data, ());
-    let invalidate_user = use_invalidate_provider(fetch_user_cache_data, *selected_user_id.read());
+    let invalidate_quick = use_invalidate_provider(fetch_quick_expiring_data(), ());
+    let invalidate_medium = use_invalidate_provider(fetch_medium_expiring_data(), ());
+    let invalidate_long = use_invalidate_provider(fetch_long_expiring_data(), ());
+    let invalidate_user =
+        use_invalidate_provider(fetch_user_cache_data(), *selected_user_id.read());
 
     rsx! {
         div { class: "cache-demo",
@@ -498,7 +499,7 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     // Initialize global providers at application startup
-    dioxus_riverpod::global::init_global_providers();
+    init_global_providers();
 
     launch(app);
 }

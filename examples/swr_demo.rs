@@ -95,7 +95,7 @@ async fn fetch_user_posts(user_id: u32) -> Result<Vec<Post>, String> {
 
 /// Data structures for our demo
 #[derive(Debug, Clone, PartialEq)]
-struct UserProfile {
+pub struct UserProfile {
     name: String,
     email: String,
     last_seen: String,
@@ -103,7 +103,7 @@ struct UserProfile {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Post {
+pub struct Post {
     id: u32,
     title: String,
     content: String,
@@ -118,12 +118,12 @@ fn SwrDemo() -> Element {
     // SWR providers - now with automatic staleness checking built into the library!
     // No more manual timers needed - the library automatically checks for stale data
     // and triggers revalidation in the background when data becomes stale.
-    let user_profile = use_provider(fetch_user_profile, ());
-    let user_posts = use_provider(fetch_user_posts, (*selected_user_id.read(),));
+    let user_profile = use_provider(fetch_user_profile(), ());
+    let user_posts = use_provider(fetch_user_posts(), (*selected_user_id.read(),));
 
     // Manual refresh functions
-    let refresh_profile = use_invalidate_provider(fetch_user_profile, ());
-    let refresh_posts = use_invalidate_provider(fetch_user_posts, *selected_user_id.read());
+    let refresh_profile = use_invalidate_provider(fetch_user_profile(), ());
+    let refresh_posts = use_invalidate_provider(fetch_user_posts(), *selected_user_id.read());
 
     rsx! {
         div { class: "swr-demo",

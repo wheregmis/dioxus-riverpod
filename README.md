@@ -37,6 +37,49 @@ cargo run --example cache_expiration_demo
 cargo run --example interval_refresh_demo
 ```
 
+## Quick Start
+
+1.  **Initialize global providers** at your application's entry point:
+
+```rust,no_run
+use dioxus_riverpod::global::init_global_providers;
+
+// This is required for all provider hooks to work
+init_global_providers();
+dioxus::launch(App);
+```
+
+2.  **Create a provider** using the `#[provider]` macro:
+
+```rust,no_run
+use dioxus_riverpod::prelude::*;
+
+#[provider]
+async fn example_provider() -> Result<String, String> {
+    // This could be an API call, database query, etc.
+    Ok("Hello from the provider!".to_string())
+}
+```
+
+3.  **Use the provider** in your components with the `use_provider` hook:
+
+```rust,no_run
+use dioxus::prelude::*;
+use dioxus_riverpod::prelude::*;
+
+#[component]
+fn App() -> Element {
+    // The provider will be fetched and cached automatically
+    let data = use_provider(example_provider(), ());
+
+    match &*data.read() {
+        AsyncState::Loading => rsx! { div { "Loading..." } },
+        AsyncState::Success(value) => rsx! { div { "{value}" } },
+        AsyncState::Error(err) => rsx! { div { "Error: {err}" } },
+    }
+}
+```
+
 ## Documentation
 
 This library provides macros and utilities for managing application state in Dioxus applications with automatic caching, refresh intervals, and cleanup.

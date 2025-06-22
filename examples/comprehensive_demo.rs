@@ -160,7 +160,7 @@ async fn fetch_chat_messages(chat_id: u32) -> Result<ChatData, String> {
 
 /// Data structures
 #[derive(Debug, Clone, PartialEq)]
-struct LiveMetrics {
+pub struct LiveMetrics {
     cpu_usage: u32,
     memory_usage: u32,
     active_connections: u32,
@@ -169,7 +169,7 @@ struct LiveMetrics {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct UserDashboard {
+pub struct UserDashboard {
     user_id: u32,
     notifications: Vec<Notification>,
     recent_activity: Vec<Activity>,
@@ -179,27 +179,27 @@ struct UserDashboard {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Notification {
+pub struct Notification {
     id: u32,
     message: String,
     priority: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Activity {
+pub struct Activity {
     action: String,
     timestamp: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct UserPrefs {
+pub struct UserPrefs {
     theme: String,
     auto_refresh: bool,
     notifications_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct AnalyticsReport {
+pub struct AnalyticsReport {
     page_views: u32,
     unique_visitors: u32,
     bounce_rate: u32,
@@ -211,14 +211,14 @@ struct AnalyticsReport {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct PageStats {
+pub struct PageStats {
     path: String,
     views: u32,
     unique_views: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct TempSessionData {
+pub struct TempSessionData {
     session_id: String,
     temp_files: Vec<TempFile>,
     memory_usage_mb: u32,
@@ -227,13 +227,13 @@ struct TempSessionData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct TempFile {
+pub struct TempFile {
     name: String,
     size_kb: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct ChatData {
+pub struct ChatData {
     chat_id: u32,
     messages: Vec<Message>,
     online_users: u32,
@@ -243,7 +243,7 @@ struct ChatData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Message {
+pub struct Message {
     id: u32,
     user: String,
     content: String,
@@ -329,18 +329,19 @@ fn ComprehensiveCacheTest() -> Element {
     let mut show_chat = use_signal(|| true);
 
     // All providers now use global cache automatically - no context needed!
-    let live_metrics = use_provider(fetch_live_metrics, ());
-    let user_dashboard = use_provider(fetch_user_dashboard, (*selected_user_id.read(),));
-    let analytics = use_provider(fetch_analytics_report, ());
-    let temp_data = use_provider(fetch_temporary_data, (session_id.read().clone(),));
-    let chat_data = use_provider(fetch_chat_messages, (*selected_chat_id.read(),));
+    let live_metrics = use_provider(fetch_live_metrics(), ());
+    let user_dashboard = use_provider(fetch_user_dashboard(), (*selected_user_id.read(),));
+    let analytics = use_provider(fetch_analytics_report(), ());
+    let temp_data = use_provider(fetch_temporary_data(), (session_id.read().clone(),));
+    let chat_data = use_provider(fetch_chat_messages(), (*selected_chat_id.read(),));
 
     // Manual refresh functions
-    let refresh_metrics = use_invalidate_provider(fetch_live_metrics, ());
-    let refresh_dashboard = use_invalidate_provider(fetch_user_dashboard, *selected_user_id.read());
-    let refresh_analytics = use_invalidate_provider(fetch_analytics_report, ());
-    let refresh_temp = use_invalidate_provider(fetch_temporary_data, session_id.read().clone());
-    let refresh_chat = use_invalidate_provider(fetch_chat_messages, *selected_chat_id.read());
+    let refresh_metrics = use_invalidate_provider(fetch_live_metrics(), ());
+    let refresh_dashboard =
+        use_invalidate_provider(fetch_user_dashboard(), *selected_user_id.read());
+    let refresh_analytics = use_invalidate_provider(fetch_analytics_report(), ());
+    let refresh_temp = use_invalidate_provider(fetch_temporary_data(), session_id.read().clone());
+    let refresh_chat = use_invalidate_provider(fetch_chat_messages(), *selected_chat_id.read());
 
     rsx! {
         div { class: "comprehensive-demo",
@@ -487,7 +488,7 @@ fn ComprehensiveCacheTest() -> Element {
 
                 // Temporary Data (Cache Expiration)
                 if *show_temp_data.read() {
-                    TempDataCard { 
+                    TempDataCard {
                         data: temp_data,
                         session_id: session_id.read().clone(),
                     }
@@ -565,7 +566,7 @@ fn ComprehensiveCacheTest() -> Element {
 /// Specific card components for each feature
 #[component]
 fn LiveMetricsCard(data: Signal<AsyncState<LiveMetrics, String>>) -> Element {
-    let refresh_metrics = use_invalidate_provider(fetch_live_metrics, ());
+    let refresh_metrics = use_invalidate_provider(fetch_live_metrics(), ());
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -649,7 +650,7 @@ fn LiveMetricsCard(data: Signal<AsyncState<LiveMetrics, String>>) -> Element {
 
 #[component]
 fn UserDashboardCard(data: Signal<AsyncState<UserDashboard, String>>, user_id: u32) -> Element {
-    let refresh_dashboard = use_invalidate_provider(fetch_user_dashboard, user_id);
+    let refresh_dashboard = use_invalidate_provider(fetch_user_dashboard(), user_id);
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -723,7 +724,7 @@ fn UserDashboardCard(data: Signal<AsyncState<UserDashboard, String>>, user_id: u
 
 #[component]
 fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
-    let refresh_analytics = use_invalidate_provider(fetch_analytics_report, ());
+    let refresh_analytics = use_invalidate_provider(fetch_analytics_report(), ());
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -806,7 +807,7 @@ fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
 
 #[component]
 fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>, session_id: String) -> Element {
-    let refresh_temp = use_invalidate_provider(fetch_temporary_data, session_id);
+    let refresh_temp = use_invalidate_provider(fetch_temporary_data(), session_id);
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",
@@ -877,7 +878,7 @@ fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>, session_id: S
 
 #[component]
 fn ChatCard(data: Signal<AsyncState<ChatData, String>>, chat_id: u32) -> Element {
-    let refresh_chat = use_invalidate_provider(fetch_chat_messages, chat_id);
+    let refresh_chat = use_invalidate_provider(fetch_chat_messages(), chat_id);
     let status_class = match &*data.read() {
         AsyncState::Loading => "loading",
         AsyncState::Success(_) => "success",

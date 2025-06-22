@@ -38,7 +38,7 @@ static API_CALL_COUNTER: AtomicU32 = AtomicU32::new(0);
 async fn fetch_live_stats() -> Result<LiveStats, String> {
     println!("🔄 [FETCH] Live stats fetch started");
     sleep(Duration::from_millis(300)).await;
-    
+
     let call_number = API_CALL_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -59,7 +59,7 @@ async fn fetch_live_stats() -> Result<LiveStats, String> {
 async fn fetch_system_metrics() -> Result<SystemMetrics, String> {
     println!("🔄 [FETCH] System metrics fetch started");
     sleep(Duration::from_millis(800)).await;
-    
+
     let call_number = API_CALL_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -80,7 +80,7 @@ async fn fetch_system_metrics() -> Result<SystemMetrics, String> {
 async fn fetch_business_metrics() -> Result<BusinessMetrics, String> {
     println!("🔄 [FETCH] Business metrics fetch started");
     sleep(Duration::from_millis(1200)).await;
-    
+
     let call_number = API_CALL_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -97,7 +97,7 @@ async fn fetch_business_metrics() -> Result<BusinessMetrics, String> {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct LiveStats {
+pub struct LiveStats {
     active_users: u32,
     cpu_usage: u32,
     memory_usage: u32,
@@ -106,7 +106,7 @@ struct LiveStats {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct SystemMetrics {
+pub struct SystemMetrics {
     disk_usage: u32,
     network_io: String,
     uptime_hours: u32,
@@ -115,7 +115,7 @@ struct SystemMetrics {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct BusinessMetrics {
+pub struct BusinessMetrics {
     daily_revenue: u32,
     active_subscriptions: u32,
     conversion_rate: String,
@@ -133,18 +133,18 @@ fn App() -> Element {
     rsx! {
         div { class: "container",
             style { {include_str!("./assets/style.css")} }
-            
+
             div { class: "header",
                 h1 { class: "main-title", "⏱️ Interval Refresh Demo" }
                 p { class: "subtitle", "Automatic Background Data Updates" }
             }
-            
+
             div { class: "dashboard",
                 LiveStatsCard { }
                 SystemMetricsCard { }
                 BusinessMetricsCard { }
             }
-            
+
             div { class: "info",
                 h3 { "⚡ Automatic Updates" }
                 p { "All data refreshes automatically in the background without any user interaction!" }
@@ -153,7 +153,7 @@ fn App() -> Element {
                     li { "🔵 System Metrics: Updates every 5 seconds" }
                     li { "🟣 Business Metrics: Updates every 10 seconds" }
                 }
-                p { class: "note", 
+                p { class: "note",
                     "💡 Watch the fetch count and timestamps to see automatic updates in action!"
                 }
             }
@@ -163,8 +163,8 @@ fn App() -> Element {
 
 #[component]
 fn LiveStatsCard() -> Element {
-    let data = use_provider(fetch_live_stats, ());
-    
+    let data = use_provider(fetch_live_stats(), ());
+
     rsx! {
         MetricsCard {
             title: "Live Stats (2s interval)".to_string(),
@@ -177,8 +177,8 @@ fn LiveStatsCard() -> Element {
 
 #[component]
 fn SystemMetricsCard() -> Element {
-    let data = use_provider(fetch_system_metrics, ());
-    
+    let data = use_provider(fetch_system_metrics(), ());
+
     rsx! {
         div { class: "metrics-card system",
             div { class: "card-header",
@@ -189,9 +189,9 @@ fn SystemMetricsCard() -> Element {
                     AsyncState::Success(_) => "status success",
                 }}
             }
-            
+
             p { class: "description", "Medium-frequency system monitoring every 5 seconds" }
-            
+
             div { class: "card-content",
                 match &*data.read() {
                     AsyncState::Loading => rsx! {
@@ -237,8 +237,8 @@ fn SystemMetricsCard() -> Element {
 
 #[component]
 fn BusinessMetricsCard() -> Element {
-    let data = use_provider(fetch_business_metrics, ());
-    
+    let data = use_provider(fetch_business_metrics(), ());
+
     rsx! {
         div { class: "metrics-card business",
             div { class: "card-header",
@@ -249,9 +249,9 @@ fn BusinessMetricsCard() -> Element {
                     AsyncState::Success(_) => "status success",
                 }}
             }
-            
+
             p { class: "description", "Low-frequency business data every 10 seconds" }
-            
+
             div { class: "card-content",
                 match &*data.read() {
                     AsyncState::Loading => rsx! {
@@ -314,9 +314,9 @@ fn MetricsCard(
                 h3 { "{title}" }
                 div { class: "{status_class}" }
             }
-            
+
             p { class: "description", "{description}" }
-            
+
             div { class: "card-content",
                 match &*data.read() {
                     AsyncState::Loading => rsx! {

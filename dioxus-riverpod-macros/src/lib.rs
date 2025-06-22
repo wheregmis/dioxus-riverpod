@@ -153,16 +153,12 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                 }
             }
 
-            impl ::dioxus_riverpod::providers::Provider<()> for #struct_name {
+            impl ::dioxus_riverpod::hooks::Provider<()> for #struct_name {
                 type Output = #output_type;
                 type Error = #error_type;
 
                 fn run(&self, _param: ()) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
                     Self::call()
-                }
-
-                fn id(&self, _param: &()) -> String {
-                    stringify!(#struct_name).to_string()
                 }
 
                 #interval_impl
@@ -189,16 +185,12 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                     }
                 }
 
-                impl ::dioxus_riverpod::providers::Provider<#param_type> for #struct_name {
+                impl ::dioxus_riverpod::hooks::Provider<#param_type> for #struct_name {
                     type Output = #output_type;
                     type Error = #error_type;
 
                     fn run(&self, #param_name: #param_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
                         Self::call(#param_name)
-                    }
-
-                    fn id(&self, param: &#param_type) -> String {
-                        format!("{}({:?})", stringify!(#struct_name), param)
                     }
 
                     #interval_impl
@@ -207,33 +199,27 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                 }
             })
         } else {
-            // Multiple parameters - Provider<(Type1, Type2, ...)>
+            // Multiple parameters - Provider<(Param1, Param2, ...)>
             let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
             let param_types: Vec<_> = params.iter().map(|p| &p.ty).collect();
-
-            // Generate tuple type with trailing comma for consistency
             let tuple_type = quote! { (#(#param_types,)*) };
 
             Ok(quote! {
                 #common_struct
 
                 impl #struct_name {
-                    #fn_vis async fn call(#(#param_names: #param_types),*) -> Result<#output_type, #error_type> {
+                    #fn_vis async fn call(#(#param_names: #param_types,)*) -> Result<#output_type, #error_type> {
                         #enhanced_fn_block
                     }
                 }
 
-                impl ::dioxus_riverpod::providers::Provider<#tuple_type> for #struct_name {
+                impl ::dioxus_riverpod::hooks::Provider<#tuple_type> for #struct_name {
                     type Output = #output_type;
                     type Error = #error_type;
 
                     fn run(&self, params: #tuple_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
-                        let (#(#param_names),*) = params;
-                        Self::call(#(#param_names),*)
-                    }
-
-                    fn id(&self, params: &#tuple_type) -> String {
-                        format!("{}({:?})", stringify!(#struct_name), params)
+                        let (#(#param_names,)*) = params;
+                        Self::call(#(#param_names,)*)
                     }
 
                     #interval_impl
@@ -245,133 +231,125 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
     }
 }
 
+/// Generate duration implementation for provider methods
 fn generate_duration_impl(method_name: &str, duration: Option<Duration>) -> TokenStream2 {
-    match duration {
-        Some(duration) => {
-            let method_ident = syn::Ident::new(method_name, proc_macro2::Span::call_site());
-            let secs = duration.as_secs();
-            let nanos = duration.subsec_nanos();
-            quote! {
-                fn #method_ident(&self) -> Option<::std::time::Duration> {
-                    Some(::std::time::Duration::new(#secs, #nanos))
-                }
+    if let Some(duration) = duration {
+        let duration_secs = duration.as_secs();
+        let method_ident = syn::Ident::new(method_name, proc_macro2::Span::call_site());
+
+        quote! {
+            fn #method_ident(&self) -> Option<::std::time::Duration> {
+                Some(::std::time::Duration::from_secs(#duration_secs))
             }
         }
-        None => {
-            // No duration specified, use default (None)
-            quote! {}
-        }
+    } else {
+        quote! {}
     }
 }
 
+/// Generate interval implementation
 fn generate_interval_impl(provider_args: &ProviderArgs) -> TokenStream2 {
     generate_duration_impl("interval", provider_args.interval)
 }
 
+/// Generate cache expiration implementation
 fn generate_cache_expiration_impl(provider_args: &ProviderArgs) -> TokenStream2 {
     generate_duration_impl("cache_expiration", provider_args.cache_expiration)
 }
 
+/// Generate stale time implementation
 fn generate_stale_time_impl(provider_args: &ProviderArgs) -> TokenStream2 {
     generate_duration_impl("stale_time", provider_args.stale_time)
 }
 
+/// Information extracted from the provider function
 struct ProviderInfo {
-    fn_name: syn::Ident,
     fn_vis: syn::Visibility,
     fn_attrs: Vec<syn::Attribute>,
     fn_block: Box<syn::Block>,
     output_type: Type,
     error_type: Type,
     struct_name: syn::Ident,
+    fn_name: syn::Ident,
 }
 
+/// Information about a function parameter
 struct ParamInfo {
     name: syn::Ident,
     ty: Type,
 }
 
+/// Extract provider information from the input function
 fn extract_provider_info(input_fn: &ItemFn) -> Result<ProviderInfo> {
     let fn_name = input_fn.sig.ident.clone();
     let fn_vis = input_fn.vis.clone();
     let fn_attrs = input_fn.attrs.clone();
     let fn_block = input_fn.block.clone();
 
-    // Extract return type from Result<T, E>
     let (output_type, error_type) = extract_result_types(&input_fn.sig.output)?;
-
-    // Generate the provider struct name (convert snake_case to PascalCase + Provider)
     let struct_name = syn::Ident::new(
-        &format!("{}Provider", to_pascal_case(&fn_name.to_string())),
-        fn_name.span(),
+        &to_pascal_case(&fn_name.to_string()),
+        proc_macro2::Span::call_site(),
     );
 
     Ok(ProviderInfo {
-        fn_name,
         fn_vis,
         fn_attrs,
         fn_block,
         output_type,
         error_type,
         struct_name,
+        fn_name,
     })
 }
 
-#[allow(unused_variables)] // Variables used in quote! macro aren't detected by compiler
-#[allow(clippy::unused_unit)] // Allow clippy warnings for proc macros
+/// Generate common struct and const for the provider
 fn generate_common_struct_and_const(info: &ProviderInfo) -> TokenStream2 {
-    let ProviderInfo {
-        fn_name,
-        fn_vis,
-        fn_attrs,
-        struct_name,
-        fn_block: _,
-        output_type: _,
-        error_type: _,
-    } = info;
+    let struct_name = &info.struct_name;
+    let fn_attrs = &info.fn_attrs;
+    let fn_name = &info.fn_name;
 
     quote! {
-        #(#fn_attrs)*
         #[derive(Clone, PartialEq)]
-        #fn_vis struct #struct_name;
+        #(#fn_attrs)*
+        pub struct #struct_name;
 
-        // Create a constant instance for easy usage
-        // Allow snake_case for ergonomic usage while suppressing the naming warning
-        #[allow(non_upper_case_globals)]
-        #fn_vis const #fn_name: #struct_name = #struct_name;
+        impl Default for #struct_name {
+            fn default() -> Self {
+                Self
+            }
+        }
+
+        // Generate a function that returns an instance of the struct
+        pub fn #fn_name() -> #struct_name {
+            #struct_name
+        }
     }
 }
 
+/// Extract all parameters from the function signature
 fn extract_all_params(input_fn: &ItemFn) -> Result<Vec<ParamInfo>> {
-    if input_fn.sig.inputs.is_empty() {
-        return Err(syn::Error::new_spanned(
-            &input_fn.sig,
-            "Family provider must have at least one parameter",
-        ));
-    }
-
     let mut params = Vec::new();
 
-    for arg in &input_fn.sig.inputs {
-        match arg {
-            FnArg::Typed(PatType { pat, ty, .. }) => match pat.as_ref() {
-                Pat::Ident(pat_ident) => {
+    for input in &input_fn.sig.inputs {
+        match input {
+            FnArg::Typed(PatType { pat, ty, .. }) => {
+                if let Pat::Ident(pat_ident) = &**pat {
                     params.push(ParamInfo {
                         name: pat_ident.ident.clone(),
                         ty: (**ty).clone(),
                     });
-                }
-                _ => {
+                } else {
                     return Err(syn::Error::new_spanned(
                         pat,
-                        "Parameter must be a simple identifier",
+                        "Only simple parameter names are supported",
                     ));
                 }
-            },
+            }
             FnArg::Receiver(_) => {
                 return Err(syn::Error::new_spanned(
-                    arg,
-                    "Provider functions cannot have self parameter",
+                    input,
+                    "Methods with self parameter are not supported",
                 ));
             }
         }
@@ -380,90 +358,100 @@ fn extract_all_params(input_fn: &ItemFn) -> Result<Vec<ParamInfo>> {
     Ok(params)
 }
 
+/// Extract result types from the function return type
 fn extract_result_types(return_type: &ReturnType) -> Result<(Type, Type)> {
     match return_type {
+        ReturnType::Default => Err(syn::Error::new_spanned(
+            return_type,
+            "Provider functions must return Result<T, E>",
+        )),
         ReturnType::Type(_, ty) => {
-            match ty.as_ref() {
-                Type::Path(type_path) => {
-                    let path = &type_path.path;
-                    if let Some(segment) = path.segments.last() {
-                        if segment.ident == "Result" {
-                            match &segment.arguments {
-                                syn::PathArguments::AngleBracketed(args) => {
-                                    if args.args.len() == 2 {
-                                        let output_type = args.args[0].clone();
-                                        let error_type = args.args[1].clone();
+            if let Type::Path(type_path) = &**ty {
+                if let Some(segment) = type_path.path.segments.last() {
+                    if segment.ident == "Result" {
+                        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                            if args.args.len() == 2 {
+                                let mut args_iter = args.args.iter();
 
-                                        match (output_type, error_type) {
-                                            (
-                                                syn::GenericArgument::Type(out),
-                                                syn::GenericArgument::Type(err),
-                                            ) => {
-                                                return Ok((out, err));
-                                            }
-                                            _ => {}
-                                        }
+                                let output_type = match args_iter.next().unwrap() {
+                                    syn::GenericArgument::Type(ty) => ty.clone(),
+                                    _ => {
+                                        return Err(syn::Error::new_spanned(
+                                            args,
+                                            "Result must have type arguments",
+                                        ));
                                     }
-                                }
-                                _ => {}
+                                };
+
+                                let error_type = match args_iter.next().unwrap() {
+                                    syn::GenericArgument::Type(ty) => ty.clone(),
+                                    _ => {
+                                        return Err(syn::Error::new_spanned(
+                                            args,
+                                            "Result must have type arguments",
+                                        ));
+                                    }
+                                };
+
+                                return Ok((output_type, error_type));
                             }
                         }
                     }
                 }
-                _ => {}
             }
+
             Err(syn::Error::new_spanned(
-                ty,
-                "Provider function must return Result<T, E>",
+                return_type,
+                "Provider functions must return Result<T, E>",
             ))
         }
-        ReturnType::Default => Err(syn::Error::new_spanned(
-            return_type,
-            "Provider function must return Result<T, E>",
-        )),
     }
 }
 
+/// Convert a string to PascalCase
 fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => {
-                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
-                }
-            }
-        })
-        .collect()
+    let mut result = String::new();
+    let mut capitalize_next = true;
+
+    for c in s.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }
 
-/// Generate dependency injection code for the function
+/// Generate dependency injection code
 fn generate_dependency_injection(inject_types: &[syn::Type], original_block: &syn::Block) -> syn::Block {
     if inject_types.is_empty() {
         return original_block.clone();
     }
 
-    // Generate injection statements
-    let mut injection_stmts = Vec::new();
-    
-    for (i, inject_type) in inject_types.iter().enumerate() {
-        let var_name = syn::Ident::new(&format!("injected_{}", i), proc_macro2::Span::call_site());
-        
-        let injection_stmt: syn::Stmt = syn::parse_quote! {
-            let #var_name = ::dioxus_riverpod::injection::inject::<#inject_type>()
-                .map_err(|e| format!("Dependency injection failed for {}: {}", stringify!(#inject_type), e))?;
-        };
-        
-        injection_stmts.push(injection_stmt);
-    }
+    // Create injection statements
+    let injection_stmts: Vec<_> = inject_types
+        .iter()
+        .map(|ty| {
+            let var_name = syn::Ident::new(
+                &format!("injected_{}", to_pascal_case(&quote!(#ty).to_string().to_lowercase())),
+                proc_macro2::Span::call_site(),
+            );
+            
+            syn::parse_quote! {
+                let #var_name = ::dioxus_riverpod::injection::inject::<#ty>()
+                    .map_err(|e| format!("Dependency injection failed for {}: {}", stringify!(#ty), e))?;
+            }
+        })
+        .collect();
 
-    // Create new block with injection statements + original statements
-    let mut new_stmts = injection_stmts;
-    new_stmts.extend(original_block.stmts.iter().cloned());
+    // Create new block with injection statements
+    let mut new_block = original_block.clone();
+    new_block.stmts.splice(0..0, injection_stmts);
 
-    syn::Block {
-        brace_token: original_block.brace_token,
-        stmts: new_stmts,
-    }
+    new_block
 }

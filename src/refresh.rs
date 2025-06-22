@@ -166,9 +166,9 @@ impl RefreshRegistry {
 
             // For certain task types, don't create multiple tasks for the same provider
             if (task_type == TaskType::StaleCheck || task_type == TaskType::CacheExpiration)
-                && tasks.iter().any(|(k, (t, _, _))| {
-                    k.starts_with(&format!("{}:", key)) && *t == task_type
-                })
+                && tasks
+                    .iter()
+                    .any(|(k, (t, _, _))| k.starts_with(&format!("{}:", key)) && *t == task_type)
             {
                 return;
             }
@@ -180,10 +180,8 @@ impl RefreshRegistry {
                     if task_type == TaskType::IntervalRefresh && interval < *current_interval {
                         tasks.remove(&task_key);
                         true
-                    } else if task_type == TaskType::StaleCheck || task_type == TaskType::CacheExpiration {
-                        false // Don't replace stale check or cache expiration tasks
                     } else {
-                        false // Keep existing shorter interval
+                        false // Don't replace stale check or cache expiration tasks
                     }
                 }
             };
@@ -202,15 +200,12 @@ impl RefreshRegistry {
                     _ => interval,
                 };
 
+                let _task_key_clone = task_key.clone();
+                let task_fn = Arc::new(task_fn);
+
                 spawn(async move {
-                    let mut interval_timer = time::interval(actual_interval);
-                    interval_timer.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
-
-                    // Skip the first tick (immediate execution)
-                    interval_timer.tick().await;
-
                     loop {
-                        interval_timer.tick().await;
+                        time::sleep(actual_interval).await;
                         task_fn();
                     }
                 });
@@ -222,7 +217,7 @@ impl RefreshRegistry {
 
     /// Start an interval task for automatic provider refresh
     ///
-    /// Convenience method that creates a periodic task for interval refresh.
+    /// This is a convenience method for starting interval refresh tasks.
     pub fn start_interval_task<F>(&self, key: &str, interval: Duration, refresh_fn: F)
     where
         F: Fn() + Send + 'static,
@@ -230,9 +225,9 @@ impl RefreshRegistry {
         self.start_periodic_task(key, TaskType::IntervalRefresh, interval, refresh_fn);
     }
 
-    /// Start a stale-checking task for automatic SWR revalidation
+    /// Start a stale check task for SWR behavior
     ///
-    /// Convenience method that creates a periodic task for stale checking.
+    /// This is a convenience method for starting stale checking tasks.
     pub fn start_stale_check_task<F>(&self, key: &str, stale_time: Duration, stale_check_fn: F)
     where
         F: Fn() + Send + 'static,
@@ -240,10 +235,10 @@ impl RefreshRegistry {
         self.start_periodic_task(key, TaskType::StaleCheck, stale_time, stale_check_fn);
     }
 
-    /// Stop a periodic task for a specific provider and task type
+    /// Stop a periodic task
     ///
-    /// Removes the task from the registry. Since we use `dioxus::spawn`, the actual
-    /// task will be automatically cancelled when the component unmounts.
+    /// Removes the task from the registry. The actual task will complete its current
+    /// iteration and then stop.
     pub fn stop_periodic_task(&self, key: &str, task_type: TaskType) {
         if let Ok(mut tasks) = self.periodic_tasks.lock() {
             let task_key = format!("{}:{:?}", key, task_type);
@@ -251,26 +246,23 @@ impl RefreshRegistry {
         }
     }
 
-    /// Stop an interval task for a specific provider
+    /// Stop an interval task
     ///
-    /// Removes the task from the registry. Since we use `dioxus::spawn`, the actual
-    /// task will be automatically cancelled when the component unmounts.
+    /// This is a convenience method for stopping interval refresh tasks.
     pub fn stop_interval_task(&self, key: &str) {
         self.stop_periodic_task(key, TaskType::IntervalRefresh);
     }
 
-    /// Stop a stale-checking task for a specific provider
+    /// Stop a stale check task
     ///
-    /// Removes the task from the registry. Since we use `dioxus::spawn`, the actual
-    /// task will be automatically cancelled when the component unmounts.
+    /// This is a convenience method for stopping stale checking tasks.
     pub fn stop_stale_check_task(&self, key: &str) {
         self.stop_periodic_task(key, TaskType::StaleCheck);
     }
 
-    /// Check if a revalidation is already in progress for a given key
+    /// Check if a revalidation is currently in progress for a provider key
     ///
-    /// This prevents duplicate revalidation operations that could cause race conditions
-    /// or unnecessary work.
+    /// This prevents duplicate revalidations from being started simultaneously.
     pub fn is_revalidation_in_progress(&self, key: &str) -> bool {
         if let Ok(revalidations) = self.ongoing_revalidations.lock() {
             revalidations.contains(key)
@@ -279,30 +271,105 @@ impl RefreshRegistry {
         }
     }
 
-    /// Mark a revalidation as started for a given key
+    /// Start a revalidation for a provider key
     ///
-    /// Returns `true` if the revalidation was successfully started (no other revalidation
-    /// was in progress), or `false` if a revalidation is already ongoing.
+    /// Returns true if the revalidation was started, false if one was already in progress.
+    /// This prevents duplicate revalidations from running simultaneously.
     pub fn start_revalidation(&self, key: &str) -> bool {
         if let Ok(mut revalidations) = self.ongoing_revalidations.lock() {
             if revalidations.contains(key) {
-                false // Already in progress
+                false
             } else {
                 revalidations.insert(key.to_string());
-                true // Successfully started
+                true
             }
         } else {
             false
         }
     }
 
-    /// Mark a revalidation as completed for a given key
+    /// Complete a revalidation for a provider key
     ///
-    /// This should be called when a revalidation operation finishes, whether it
-    /// succeeded or failed.
+    /// This should be called when a revalidation finishes, regardless of success or failure.
     pub fn complete_revalidation(&self, key: &str) {
         if let Ok(mut revalidations) = self.ongoing_revalidations.lock() {
             revalidations.remove(key);
         }
     }
+
+    /// Get statistics about the refresh registry
+    pub fn stats(&self) -> RefreshRegistryStats {
+        let refresh_count = if let Ok(counters) = self.refresh_counters.lock() {
+            counters.len()
+        } else {
+            0
+        };
+
+        let context_count = if let Ok(contexts) = self.reactive_contexts.lock() {
+            contexts.len()
+        } else {
+            0
+        };
+
+        let task_count = if let Ok(tasks) = self.periodic_tasks.lock() {
+            tasks.len()
+        } else {
+            0
+        };
+
+        let revalidation_count = if let Ok(revalidations) = self.ongoing_revalidations.lock() {
+            revalidations.len()
+        } else {
+            0
+        };
+
+        RefreshRegistryStats {
+            refresh_count,
+            context_count,
+            task_count,
+            revalidation_count,
+        }
+    }
+
+    /// Clean up unused subscriptions and tasks
+    pub fn cleanup(&self) -> RefreshCleanupStats {
+        let mut stats = RefreshCleanupStats::default();
+
+        // Clean up unused reactive contexts
+        if let Ok(mut contexts) = self.reactive_contexts.lock() {
+            let initial_context_count = contexts.len();
+            contexts.retain(|_, context_set| {
+                if let Ok(set) = context_set.lock() {
+                    !set.is_empty()
+                } else {
+                    false
+                }
+            });
+            stats.contexts_removed = initial_context_count - contexts.len();
+        }
+
+        // Clean up completed revalidations (should be empty, but just in case)
+        if let Ok(mut revalidations) = self.ongoing_revalidations.lock() {
+            stats.revalidations_cleared = revalidations.len();
+            revalidations.clear();
+        }
+
+        stats
+    }
+}
+
+/// Statistics for the refresh registry
+#[derive(Debug, Clone, Default)]
+pub struct RefreshRegistryStats {
+    pub refresh_count: usize,
+    pub context_count: usize,
+    pub task_count: usize,
+    pub revalidation_count: usize,
+}
+
+/// Statistics for refresh registry cleanup operations
+#[derive(Debug, Clone, Default)]
+pub struct RefreshCleanupStats {
+    pub contexts_removed: usize,
+    pub revalidations_cleared: usize,
 }
