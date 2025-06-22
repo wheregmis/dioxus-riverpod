@@ -294,16 +294,6 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
     }
 }
 
-/// Hook to access the disposal registry for auto-dispose management
-///
-/// **DEPRECATED**: Auto-dispose based on component unmounting is not recommended
-/// in a global cache system. Use cache_expiration() for time-based cleanup instead.
-///
-/// This provides access to the disposal registry, allowing for manual control
-/// over the auto-dispose functionality.
-///
-/// Requires global providers to be initialized with `init_global_providers()`.
-
 /// Trait for unified provider usage - automatically handles providers with and without parameters
 ///
 /// This trait is implemented for all Provider types and provides a unified interface

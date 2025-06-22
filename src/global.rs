@@ -5,16 +5,13 @@
 
 use std::sync::OnceLock;
 
-use crate::{cache::ProviderCache, disposal::DisposalRegistry, refresh::RefreshRegistry};
+use crate::{cache::ProviderCache, refresh::RefreshRegistry};
 
 /// Global singleton instance of the provider cache
 static GLOBAL_CACHE: OnceLock<ProviderCache> = OnceLock::new();
 
 /// Global singleton instance of the refresh registry
 static GLOBAL_REFRESH_REGISTRY: OnceLock<RefreshRegistry> = OnceLock::new();
-
-/// Global singleton instance of the disposal registry
-static GLOBAL_DISPOSAL_REGISTRY: OnceLock<DisposalRegistry> = OnceLock::new();
 
 /// Initialize the global provider management system
 ///
@@ -44,14 +41,10 @@ static GLOBAL_DISPOSAL_REGISTRY: OnceLock<DisposalRegistry> = OnceLock::new();
 /// ```
 pub fn init_global_providers() {
     // Initialize cache first
-    let cache = GLOBAL_CACHE.get_or_init(ProviderCache::new);
+    GLOBAL_CACHE.get_or_init(ProviderCache::new);
 
     // Initialize refresh registry
     let _refresh_registry = GLOBAL_REFRESH_REGISTRY.get_or_init(RefreshRegistry::new);
-
-    // Initialize disposal registry with reference to cache
-    let _disposal_registry =
-        GLOBAL_DISPOSAL_REGISTRY.get_or_init(|| DisposalRegistry::new(cache.clone()));
 }
 
 /// Get the global provider cache instance
@@ -82,25 +75,9 @@ pub fn get_global_refresh_registry() -> &'static RefreshRegistry {
         .expect("Global providers not initialized. Call init_global_providers() first.")
 }
 
-/// Get the global disposal registry instance
-///
-/// Returns the global disposal registry that manages automatic cleanup
-/// across the entire application.
-///
-/// ## Panics
-///
-/// Panics if `init_global_providers()` has not been called yet.
-pub fn get_global_disposal_registry() -> &'static DisposalRegistry {
-    GLOBAL_DISPOSAL_REGISTRY
-        .get()
-        .expect("Global providers not initialized. Call init_global_providers() first.")
-}
-
 /// Check if global providers have been initialized
 pub fn is_initialized() -> bool {
-    GLOBAL_CACHE.get().is_some()
-        && GLOBAL_REFRESH_REGISTRY.get().is_some()
-        && GLOBAL_DISPOSAL_REGISTRY.get().is_some()
+    GLOBAL_CACHE.get().is_some() && GLOBAL_REFRESH_REGISTRY.get().is_some()
 }
 
 /// Reset global providers (mainly for testing)
@@ -135,7 +112,6 @@ mod tests {
         // Test that we can get all instances
         let _cache = get_global_cache();
         let _refresh = get_global_refresh_registry();
-        let _disposal = get_global_disposal_registry();
     }
 
     #[test]
