@@ -12,7 +12,7 @@
 //! - Cache integration with interval refresh
 
 use dioxus::prelude::*;
-use dioxus_riverpod::prelude::*;
+use dioxus_provider::prelude::*;
 use std::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
@@ -124,8 +124,13 @@ pub struct BusinessMetrics {
 }
 
 fn main() {
-    dioxus_riverpod::global::init_global_providers();
-    dioxus::launch(App);
+    // Initialize global providers for application-wide cache management
+    dioxus_provider::global::init_global_providers();
+
+    println!("🚀 Starting Interval Refresh Demo");
+    println!("⏰ Demonstrating automatic background data refresh at configurable intervals");
+
+    launch(App);
 }
 
 #[component]

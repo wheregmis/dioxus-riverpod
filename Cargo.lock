@@ -1179,13 +1179,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "dioxus-riverpod"
-version = "0.1.0"
+name = "dioxus-provider"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "dioxus",
  "dioxus-lib",
- "dioxus-riverpod-macros",
+ "dioxus-provider-macros",
  "env_logger",
  "tokio",
  "tracing",
@@ -1195,7 +1195,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dioxus-riverpod-macros"
+name = "dioxus-provider-macros"
 version = "0.1.0"
 dependencies = [
  "humantime",

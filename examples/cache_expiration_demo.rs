@@ -16,7 +16,7 @@
 //! - Global provider management (NEW!)
 
 use dioxus::prelude::*;
-use dioxus_riverpod::{global::init_global_providers, prelude::*};
+use dioxus_provider::{global::init_global_providers, prelude::*};
 use std::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,

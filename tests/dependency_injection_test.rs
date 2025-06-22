@@ -1,6 +1,6 @@
 // Test different approaches for handling dependencies like API clients
 
-use dioxus_riverpod::prelude::*;
+use dioxus_provider::prelude::*;
 use std::sync::Arc;
 
 // Example: API client that doesn't implement PartialEq/Hash

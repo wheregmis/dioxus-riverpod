@@ -20,7 +20,7 @@
 //! - Global provider management
 
 use dioxus::prelude::*;
-use dioxus_riverpod::prelude::*;
+use dioxus_provider::prelude::*;
 use std::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
@@ -266,8 +266,11 @@ fn app() -> Element {
 }
 
 fn main() {
-    // Initialize global providers at application startup
-    dioxus_riverpod::global::init_global_providers();
+    // Initialize global providers for application-wide cache management
+    dioxus_provider::global::init_global_providers();
+
+    println!("🚀 Starting SWR Demo");
+    println!("🔄 Demonstrating Stale-While-Revalidate pattern");
 
     launch(app);
 }

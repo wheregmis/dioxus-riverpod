@@ -11,11 +11,11 @@ pub mod refresh;
 pub mod types;
 
 pub mod prelude {
-    //! The prelude exports all the most common types and functions for using dioxus-riverpod.
+    //! The prelude exports all the most common types and functions for using dioxus-provider.
 
     // The main provider trait and the macro
     pub use crate::hooks::Provider;
-    pub use dioxus_riverpod_macros::provider;
+    pub use dioxus_provider_macros::provider;
 
     // The core hook for using providers
     pub use crate::hooks::use_provider;

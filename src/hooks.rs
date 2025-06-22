@@ -1,54 +1,28 @@
-//! # Global Provider Hooks
+//! # Provider Hooks
 //!
-//! This module provides the main hooks and traits for working with global providers in Dioxus.
-//! It includes the core Provider trait, the unified hook system for both parameterized
-//! and non-parameterized providers, and utility hooks for global cache management.
+//! This module provides hooks for working with providers in Dioxus applications.
+//! It requires `dioxus_provider::global::init_global_providers()` to be called at application startup.
 //!
-//! **⚠️ Global Initialization Required**: All hooks in this module require
-//! `dioxus_riverpod::global::init_global_providers()` to be called at application startup.
+//! ## Example
 //!
-//! ## Key Features
-//!
-//! - **Global State Management**: Application-wide provider state
-//! - **Provider Trait**: Unified interface for all provider types
-//! - **Automatic Caching**: Built-in global caching with configurable expiration
-//! - **Stale-While-Revalidate (SWR)**: Background updates while serving stale data
-//! - **Auto-Dispose**: Automatic cleanup of unused providers
-//! - **Interval Refresh**: Automatic refresh at specified intervals
-//! - **Cross-Platform**: Works on both web and desktop using dioxus tasks
-//!
-//! ## Quick Start
-//!
-//! ```rust,no_run
+//! ```rust
 //! use dioxus::prelude::*;
-//! use dioxus_riverpod::{prelude::*, global::init_global_providers};
-//!
-//! fn main() {
-//!     // REQUIRED: Initialize global providers
-//!     init_global_providers();
-//!     dioxus::launch(App);
-//! }
+//! use dioxus_provider::{prelude::*, global::init_global_providers};
 //!
 //! #[provider]
-//! async fn data_provider() -> Result<String, String> {
-//!     Ok("data".to_string())
+//! async fn fetch_user(id: u32) -> Result<String, String> {
+//!     Ok(format!("User {}", id))
 //! }
 //!
 //! #[component]
 //! fn App() -> Element {
-//!     rsx! { MyComponent {} }
+//!     let user = use_provider(fetch_user(), (1,));
+//!     rsx! { div { "User: {user:?}" } }
 //! }
 //!
-//! #[component]
-//! fn MyComponent() -> Element {
-//!     // Use provider directly - global cache handles everything
-//!     let data = use_provider(data_provider(), ());
-//!
-//!     match *data.read() {
-//!         AsyncState::Loading => rsx! { div { "Loading..." } },
-//!         AsyncState::Success(ref value) => rsx! { div { "{value}" } },
-//!         AsyncState::Error(_) => rsx! { div { "Error occurred" } },
-//!     }
+//! fn main() {
+//!     init_global_providers();
+//!     launch(App);
 //! }
 //! ```
 
@@ -85,7 +59,7 @@ use crate::{
 /// ## Example
 ///
 /// ```rust,no_run
-/// use dioxus_riverpod::prelude::*;
+/// use dioxus_provider::prelude::*;
 /// use std::time::Duration;
 ///
 /// #[provider(stale_time = "1m", cache_expiration = "5m")]
@@ -176,7 +150,7 @@ fn get_refresh_registry() -> RefreshRegistry {
 /// ## Setup
 ///
 /// ```rust,no_run
-/// use dioxus_riverpod::{prelude::*, global::init_global_providers};
+/// use dioxus_provider::{prelude::*, global::init_global_providers};
 ///
 /// fn main() {
 ///     init_global_providers();
@@ -195,7 +169,7 @@ fn get_refresh_registry() -> RefreshRegistry {
 ///
 /// ```rust,no_run
 /// use dioxus::prelude::*;
-/// use dioxus_riverpod::prelude::*;
+/// use dioxus_provider::prelude::*;
 ///
 /// #[component]
 /// fn MyComponent() -> Element {
@@ -225,7 +199,7 @@ pub fn use_provider_cache() -> ProviderCache {
 ///
 /// ```rust,no_run
 /// use dioxus::prelude::*;
-/// use dioxus_riverpod::prelude::*;
+/// use dioxus_provider::prelude::*;
 ///
 /// #[provider]
 /// async fn user_provider(id: u32) -> Result<String, String> {
@@ -270,7 +244,7 @@ where
 ///
 /// ```rust,no_run
 /// use dioxus::prelude::*;
-/// use dioxus_riverpod::prelude::*;
+/// use dioxus_provider::prelude::*;
 ///
 /// #[component]
 /// fn MyComponent() -> Element {
@@ -679,7 +653,7 @@ fn check_and_handle_cache_expiration(
 ///
 /// ```rust,no_run
 /// use dioxus::prelude::*;
-/// use dioxus_riverpod::prelude::*;
+/// use dioxus_provider::prelude::*;
 ///
 /// #[derive(Clone, PartialEq)]
 /// struct DataProvider;

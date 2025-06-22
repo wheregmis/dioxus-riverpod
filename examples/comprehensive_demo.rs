@@ -16,7 +16,7 @@
 //! - Performance monitoring
 
 use dioxus::prelude::*;
-use dioxus_riverpod::{global::init_global_providers, prelude::*};
+use dioxus_provider::{global::init_global_providers, prelude::*};
 use std::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
@@ -735,7 +735,7 @@ fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
         div { class: "feature-card analytics",
             div { class: "card-header",
                 div { class: "card-title-section",
-                    h3 { class: "card-title", "📊 Analytics Report (TTL: 10s)" }
+                    h3 { class: "card-title", "�� Analytics Report (TTL: 10s)" }
                     p { class: "card-strategy", "Reactive cache expiration after 10 seconds" }
                 }
                 div { class: "card-header-actions",

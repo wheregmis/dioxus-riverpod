@@ -22,7 +22,7 @@ static GLOBAL_REFRESH_REGISTRY: OnceLock<RefreshRegistry> = OnceLock::new();
 ///
 /// ```rust,no_run
 /// use dioxus::prelude::*;
-/// use dioxus_riverpod::global::init_global_providers;
+/// use dioxus_provider::global::init_global_providers;
 ///
 /// fn main() {
 ///     // Initialize global provider system

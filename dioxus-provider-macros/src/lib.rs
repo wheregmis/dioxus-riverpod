@@ -153,7 +153,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                 }
             }
 
-            impl ::dioxus_riverpod::hooks::Provider<()> for #struct_name {
+            impl ::dioxus_provider::hooks::Provider<()> for #struct_name {
                 type Output = #output_type;
                 type Error = #error_type;
 
@@ -185,7 +185,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                     }
                 }
 
-                impl ::dioxus_riverpod::hooks::Provider<#param_type> for #struct_name {
+                impl ::dioxus_provider::hooks::Provider<#param_type> for #struct_name {
                     type Output = #output_type;
                     type Error = #error_type;
 
@@ -213,7 +213,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                     }
                 }
 
-                impl ::dioxus_riverpod::hooks::Provider<#tuple_type> for #struct_name {
+                impl ::dioxus_provider::hooks::Provider<#tuple_type> for #struct_name {
                     type Output = #output_type;
                     type Error = #error_type;
 
@@ -443,7 +443,7 @@ fn generate_dependency_injection(inject_types: &[syn::Type], original_block: &sy
             );
             
             syn::parse_quote! {
-                let #var_name = ::dioxus_riverpod::injection::inject::<#ty>()
+                let #var_name = ::dioxus_provider::injection::inject::<#ty>()
                     .map_err(|e| format!("Dependency injection failed for {}: {}", stringify!(#ty), e))?;
             }
         })

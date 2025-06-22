@@ -1,15 +1,15 @@
-# Dioxus Riverpod
+# Dioxus Provider
 
-[![Crates.io](https://img.shields.io/crates/v/dioxus-riverpod.svg)](https://crates.io/crates/dioxus-riverpod)
-[![Docs.rs](https://docs.rs/dioxus-riverpod/badge.svg)](https://docs.rs/dioxus-riverpod)
+[![Crates.io](https://img.shields.io/crates/v/dioxus-provider.svg)](https://crates.io/crates/dioxus-provider)
+[![Docs.rs](https://docs.rs/dioxus-provider/badge.svg)](https://docs.rs/dioxus-provider)
 
-**Effortless, powerful, and scalable state management for Dioxus applications, inspired by [Riverpod for Flutter](https://riverpod.dev/).**
+**Effortless, powerful, and scalable data fetching and caching for Dioxus applications, inspired by [Riverpod for Flutter](https://riverpod.dev/).**
 
-`dioxus-riverpod` provides a simple yet robust way to manage application state, handle asynchronous operations, and cache data with minimal boilerplate. It is designed to feel native to Dioxus, integrating seamlessly with its component model and hooks system.
+`dioxus-provider` provides a simple yet robust way to manage data fetching, handle asynchronous operations, and cache data with minimal boilerplate. It is designed to feel native to Dioxus, integrating seamlessly with its component model and hooks system.
 
 ## Key Features
 
-- **Global Provider System**: Manage application-wide state without nesting context providers. Simplifies component architecture and avoids "provider hell."
+- **Global Provider System**: Manage application-wide data without nesting context providers. Simplifies component architecture and avoids "provider hell."
 - **Declarative `#[provider]` Macro**: Define data sources with a simple attribute. The macro handles all the complex boilerplate for you.
 - **Intelligent Caching Strategies**:
     - **Stale-While-Revalidate (SWR)**: Serve stale data instantly while fetching fresh data in the background for a lightning-fast user experience.
@@ -22,11 +22,11 @@
 
 ## Installation
 
-Add `dioxus-riverpod` to your `Cargo.toml`:
+Add `dioxus-provider` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dioxus-riverpod = "0.2.0" # Replace with the latest version
+dioxus-provider = "0.0.1" # Replace with the latest version
 ```
 
 ## Getting Started
@@ -36,7 +36,7 @@ dioxus-riverpod = "0.2.0" # Replace with the latest version
 At the entry point of your application, call `init_global_providers()` once. This sets up the global cache that all providers will use.
 
 ```rust,no_run
-use dioxus_riverpod::global::init_global_providers;
+use dioxus_provider::global::init_global_providers;
 use dioxus::prelude::*;
 
 fn main() {
@@ -55,7 +55,7 @@ fn app() -> Element {
 A "provider" is a function that fetches or computes a piece of data. Use the `#[provider]` attribute to turn any `async` function into a data source that can be used throughout your app.
 
 ```rust,no_run
-use dioxus_riverpod::prelude::*;
+use dioxus_provider::prelude::*;
 use std::time::Duration;
 
 // This could be an API call, database query, etc.
@@ -75,7 +75,7 @@ The hook returns a `Signal<AsyncState<T, E>>`, which can be in one of three stat
 
 ```rust,no_run
 use dioxus::prelude::*;
-use dioxus_riverpod::prelude::*;
+use dioxus_provider::prelude::*;
 
 #[component]
 fn App() -> Element {
@@ -84,7 +84,7 @@ fn App() -> Element {
 
     rsx! {
         div {
-            h1 { "Dioxus Riverpod Demo" }
+            h1 { "Dioxus Provider Demo" }
             // Pattern match on the state to render UI
             match &*message.read() {
                 AsyncState::Loading => rsx! { div { "Loading..." } },
@@ -103,7 +103,7 @@ fn App() -> Element {
 Providers can take arguments to fetch dynamic data. For example, fetching a user by their ID. The cache is keyed by the arguments, so `fetch_user(1)` and `fetch_user(2)` are cached separately.
 
 ```rust,no_run
-use dioxus_riverpod::prelude::*;
+use dioxus_provider::prelude::*;
 
 #[provider]
 async fn fetch_user(user_id: u32) -> Result<String, String> {
@@ -156,7 +156,7 @@ You can manually invalidate a provider's cache to force a re-fetch.
 
 ```rust,no_run
 use dioxus::prelude::*;
-use dioxus_riverpod::prelude::*;
+use dioxus_provider::prelude::*;
 
 #[component]
 fn UserDashboard() -> Element {
@@ -218,10 +218,10 @@ For more complex applications requiring advanced type safety, sophisticated cach
 - Applications with sophisticated caching and synchronization needs
 - Enterprise applications where data consistency is critical
 
-**When to choose dioxus-riverpod:**
+**When to choose dioxus-provider:**
 - Smaller to medium applications
 - Quick prototyping and development
-- Teams new to Dioxus state management
+- Teams new to Dioxus data management
 - Applications where simplicity and ease of use are priorities
 
 ### dioxus-motion: For Smooth Animations and Transitions
@@ -239,18 +239,18 @@ Looking to add beautiful animations to your Dioxus application? Check out **[dio
 - **Extensible**: Implement `Animatable` trait for custom types
 
 **Perfect combination:**
-- Use **dioxus-riverpod** for state management and data fetching
+- Use **dioxus-provider** for data fetching and caching
 - Use **dioxus-motion** for smooth UI animations and transitions
 - Both libraries work together seamlessly in the same application
 
 ```rust
-// Example: Combining dioxus-riverpod with dioxus-motion
-use dioxus_riverpod::prelude::*;
+// Example: Combining dioxus-provider with dioxus-motion
+use dioxus_provider::prelude::*;
 use dioxus_motion::prelude::*;
 
 #[component]
 fn AnimatedUserCard(user_id: u32) -> Element {
-    // State management with dioxus-riverpod
+    // Data fetching with dioxus-provider
     let user_data = use_provider(fetch_user(), (user_id,));
     
     // Animation with dioxus-motion

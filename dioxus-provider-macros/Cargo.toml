@@ -1,5 +1,5 @@
 [package]
-name = "dioxus-riverpod-macros"
+name = "dioxus-provider-macros"
 version = "0.1.0"
 edition = "2024"
 
