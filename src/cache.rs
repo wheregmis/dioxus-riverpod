@@ -1,4 +1,4 @@
-//! Cache management and async state types for dioxus-riverpod
+//! Cache management and async state types for dioxus-provider
 
 use std::{
     any::Any,

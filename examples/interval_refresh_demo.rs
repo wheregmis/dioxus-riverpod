@@ -1,6 +1,6 @@
 //! # Interval Refresh Demo
 //!
-//! This example demonstrates automatic interval-based data refresh in dioxus-riverpod.
+//! This example demonstrates automatic interval-based data refresh in dioxus-provider.
 //! Providers can be configured to automatically refresh their data at specified intervals,
 //! keeping the UI updated with fresh data without manual intervention.
 //!

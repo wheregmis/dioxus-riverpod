@@ -1,6 +1,6 @@
-//! # Comprehensive Dioxus-Riverpod Demo
+//! # Comprehensive Dioxus-Provider Demo
 //!
-//! This example demonstrates all caching and state management features of dioxus-riverpod
+//! This example demonstrates all caching and state management features of dioxus-provider
 //! in one comprehensive demo. It showcases how different strategies work together for
 //! optimal data management using the global provider system.
 //!
@@ -348,7 +348,7 @@ fn ComprehensiveCacheTest() -> Element {
             header { class: "demo-header",
                 h1 { "🚀 Comprehensive Cache Feature Test" }
                 p { class: "demo-description",
-                    "Complete demonstration of all dioxus-riverpod caching strategies working together."
+                    "Complete demonstration of all dioxus-provider caching strategies working together."
                 }
                 div { class: "stats-summary",
                     div { class: "stat-item",

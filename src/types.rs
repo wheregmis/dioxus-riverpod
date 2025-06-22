@@ -1,4 +1,4 @@
-//! Common types and aliases used throughout dioxus-riverpod
+//! Common types and aliases used throughout dioxus-provider
 
 use std::{
     collections::{HashMap, HashSet},

@@ -1,6 +1,6 @@
 //! # Cache Expiration Demo
 //!
-//! This example demonstrates cache expiration functionality in dioxus-riverpod.
+//! This example demonstrates cache expiration functionality in dioxus-provider.
 //! Unlike SWR which serves stale data while revalidating, cache expiration
 //! completely removes expired data and shows loading state during refetch.
 //!
