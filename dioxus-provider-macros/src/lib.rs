@@ -18,6 +18,13 @@ struct ProviderArgs {
     inject: Vec<syn::Type>, // New: list of types to inject
 }
 
+/// Attribute arguments for the mutation macro
+#[derive(Default)]
+struct MutationArgs {
+    invalidates: Vec<syn::Ident>, // List of provider functions to invalidate
+    inject: Vec<syn::Type>, // List of types to inject
+}
+
 impl Parse for ProviderArgs {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut args = ProviderArgs::default();
@@ -50,6 +57,41 @@ impl Parse for ProviderArgs {
                         syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
                     })?;
                     args.stale_time = Some(duration);
+                }
+                "inject" => {
+                    // Parse injection types: inject = [Type1, Type2, ...]
+                    let content;
+                    syn::bracketed!(content in input);
+                    let types = content.parse_terminated(syn::Type::parse, Token![,])?;
+                    args.inject = types.into_iter().collect();
+                }
+                _ => return Err(syn::Error::new_spanned(ident, "Unknown argument")),
+            }
+
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(args)
+    }
+}
+
+impl Parse for MutationArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut args = MutationArgs::default();
+
+        while !input.is_empty() {
+            let ident: syn::Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+
+            match ident.to_string().as_str() {
+                "invalidates" => {
+                    // Parse invalidation list: invalidates = [provider1, provider2, ...]
+                    let content;
+                    syn::bracketed!(content in input);
+                    let providers = content.parse_terminated(syn::Ident::parse, Token![,])?;
+                    args.invalidates = providers.into_iter().collect();
                 }
                 "inject" => {
                     // Parse injection types: inject = [Type1, Type2, ...]
@@ -111,6 +153,58 @@ pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(input as ItemFn);
 
     let result = generate_provider(input_fn, provider_args);
+
+    match result {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Attribute macro for creating mutations
+///
+/// Mutations are operations that modify data and can invalidate provider caches.
+/// They support dependency injection and automatic cache invalidation.
+///
+/// ## Examples
+///
+/// Basic mutation:
+/// ```rust
+/// #[mutation]
+/// async fn create_user(data: UserData) -> Result<User, String> {
+///     api_client.create_user(data).await
+/// }
+/// ```
+///
+/// Mutation with cache invalidation:
+/// ```rust
+/// #[mutation(invalidates = [fetch_users, fetch_user_stats])]
+/// async fn update_user(user_id: u32, data: UserData) -> Result<User, String> {
+///     api_client.update_user(user_id, data).await
+/// }
+/// ```
+///
+/// Mutation with dependency injection:
+/// ```rust
+/// #[mutation(inject = [ApiClient, Logger], invalidates = [fetch_user])]
+/// async fn delete_user(user_id: u32) -> Result<(), String> {
+///     // ApiClient and Logger are automatically injected
+///     api_client.delete_user(user_id).await
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn mutation(args: TokenStream, input: TokenStream) -> TokenStream {
+    let mutation_args = if args.is_empty() {
+        MutationArgs::default()
+    } else {
+        match syn::parse(args) {
+            Ok(args) => args,
+            Err(err) => return err.to_compile_error().into(),
+        }
+    };
+
+    let input_fn = parse_macro_input!(input as ItemFn);
+
+    let result = generate_mutation(input_fn, mutation_args);
 
     match result {
         Ok(tokens) => tokens.into(),
@@ -231,6 +325,111 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
     }
 }
 
+fn generate_mutation(input_fn: ItemFn, mutation_args: MutationArgs) -> Result<TokenStream2> {
+    let info = extract_provider_info(&input_fn)?;
+
+    let ProviderInfo {
+        fn_vis,
+        fn_block,
+        output_type,
+        error_type,
+        struct_name,
+        ..
+    } = &info;
+
+    // Generate enhanced function body with dependency injection
+    let enhanced_fn_block = generate_dependency_injection(&mutation_args.inject, fn_block);
+
+    // Generate invalidation implementation
+    let invalidation_impl = generate_invalidation_impl(&mutation_args);
+
+    // Generate common struct and const
+    let common_struct = generate_common_struct_and_const(&info);
+
+    // Determine parameter type and implementation based on function parameters
+    if input_fn.sig.inputs.is_empty() {
+        // No parameters - Mutation<()>
+        Ok(quote! {
+            #common_struct
+
+            impl #struct_name {
+                #fn_vis async fn call() -> Result<#output_type, #error_type> {
+                    #enhanced_fn_block
+                }
+            }
+
+            impl ::dioxus_provider::mutation::Mutation<()> for #struct_name {
+                type Output = #output_type;
+                type Error = #error_type;
+
+                fn mutate(&self, _input: ()) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                    Self::call()
+                }
+
+                #invalidation_impl
+            }
+        })
+    } else {
+        // Has parameters - extract and handle them
+        let params = extract_all_params(&input_fn)?;
+
+        if params.len() == 1 {
+            // Single parameter - Mutation<ParamType>
+            let param = &params[0];
+            let param_name = &param.name;
+            let param_type = &param.ty;
+
+            Ok(quote! {
+                #common_struct
+
+                impl #struct_name {
+                    #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
+                        #enhanced_fn_block
+                    }
+                }
+
+                impl ::dioxus_provider::mutation::Mutation<#param_type> for #struct_name {
+                    type Output = #output_type;
+                    type Error = #error_type;
+
+                    fn mutate(&self, #param_name: #param_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                        Self::call(#param_name)
+                    }
+
+                    #invalidation_impl
+                }
+            })
+        } else {
+            // Multiple parameters - Mutation<(Param1, Param2, ...)>
+            let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
+            let param_types: Vec<_> = params.iter().map(|p| &p.ty).collect();
+            let tuple_type = quote! { (#(#param_types,)*) };
+
+            Ok(quote! {
+                #common_struct
+
+                impl #struct_name {
+                    #fn_vis async fn call(#(#param_names: #param_types,)*) -> Result<#output_type, #error_type> {
+                        #enhanced_fn_block
+                    }
+                }
+
+                impl ::dioxus_provider::mutation::Mutation<#tuple_type> for #struct_name {
+                    type Output = #output_type;
+                    type Error = #error_type;
+
+                    fn mutate(&self, input: #tuple_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                        let (#(#param_names,)*) = input;
+                        Self::call(#(#param_names,)*)
+                    }
+
+                    #invalidation_impl
+                }
+            })
+        }
+    }
+}
+
 /// Generate duration implementation for provider methods
 fn generate_duration_impl(method_name: &str, duration: Option<Duration>) -> TokenStream2 {
     if let Some(duration) = duration {
@@ -260,6 +459,28 @@ fn generate_cache_expiration_impl(provider_args: &ProviderArgs) -> TokenStream2 
 /// Generate stale time implementation
 fn generate_stale_time_impl(provider_args: &ProviderArgs) -> TokenStream2 {
     generate_duration_impl("stale_time", provider_args.stale_time)
+}
+
+/// Generate invalidation implementation for mutations
+fn generate_invalidation_impl(mutation_args: &MutationArgs) -> TokenStream2 {
+    if mutation_args.invalidates.is_empty() {
+        quote! {}
+    } else {
+        let provider_calls: Vec<_> = mutation_args.invalidates
+            .iter()
+            .map(|provider_fn| {
+                quote! {
+                    ::dioxus_provider::mutation::provider_cache_key_simple(#provider_fn())
+                }
+            })
+            .collect();
+
+        quote! {
+            fn invalidates(&self) -> Vec<String> {
+                vec![#(#provider_calls,)*]
+            }
+        }
+    }
 }
 
 /// Information extracted from the provider function
