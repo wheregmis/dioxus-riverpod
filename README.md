@@ -12,6 +12,7 @@
 
 ## Key Features
 
+### Data Fetching & Caching
 - **Global Provider System**: Manage application-wide data without nesting context providers. Simplifies component architecture and avoids "provider hell."
 - **Declarative `#[provider]` Macro**: Define data sources with a simple attribute. The macro handles all the complex boilerplate for you.
 - **Intelligent Caching Strategies**:
@@ -19,9 +20,19 @@
     - **Time-to-Live (TTL) Cache Expiration**: Automatically evict cached data after a configured duration.
 - **Automatic Refresh**: Keep data fresh with interval-based background refetching.
 - **Parameterized Queries**: Create providers that depend on dynamic arguments (e.g., fetching user data by ID).
+
+### Mutation System ✨ NEW!
+- **Manual Implementation Pattern**: Define data mutations using simple struct implementations.
+- **Optimistic Updates**: Immediate UI feedback with automatic rollback on failure.
+- **Smart Cache Invalidation**: Automatically refresh related providers after successful mutations.
+- **Mutation State Tracking**: Built-in loading, success, and error states for mutations.
+- **Type-Safe Parameters**: Support for no parameters, single parameters, and multiple parameters (tuples).
+
+### Developer Experience
 - **Manual Cache Control**: Hooks to manually invalidate cached data or clear the entire cache.
 - **Cross-Platform by Default**: Works seamlessly on both Desktop and Web (WASM).
 - **Minimal Boilerplate**: Get started in minutes with intuitive hooks and macros.
+- **Type Safety**: Full TypeScript-level type safety with Rust's type system.
 
 ## Installation
 
@@ -98,6 +109,59 @@ fn App() -> Element {
     }
 }
 ```
+
+## Mutations: Modifying Data with Automatic Cache Management
+
+The mutation system allows you to define data modification operations that automatically invalidate related provider caches, ensuring your UI stays in sync with server state.
+
+### 1. Basic Mutations (Macro-Based)
+
+Create mutations using the `#[mutation]` attribute. Mutations automatically invalidate specified provider caches when they succeed.
+
+```rust
+use dioxus_provider::prelude::*;
+
+// Define a mutation that invalidates the todo list when successful
+#[mutation(invalidates = [fetch_todos])]
+async fn add_todo(title: String) -> Result<Todo, String> {
+    // ... add todo logic ...
+}
+
+// Use the mutation in a component
+let (mutation_state, mutate) = use_mutation(add_todo());
+```
+
+### 2. Optimistic Updates
+
+For better UX, use optimistic mutations that update the UI immediately and rollback on failure:
+
+```rust
+#[mutation(invalidates = [fetch_todos])]
+async fn toggle_todo(id: u32) -> Result<Todo, String> {
+    // ... toggle logic ...
+}
+
+let (mutation_state, toggle) = use_optimistic_mutation(toggle_todo());
+```
+
+### 3. Multiple Cache Invalidation
+
+Mutations can invalidate multiple provider caches at once:
+
+```rust
+#[mutation(invalidates = [fetch_todos, fetch_stats])]
+async fn remove_todo(id: u32) -> Result<(), String> {
+    // ... remove logic ...
+}
+```
+
+### 4. Example: Todo App
+
+See `examples/todo_macro_demo.rs` for a complete, minimal Todo app using macro-based mutations and providers:
+- Add, toggle, and remove todos
+- Automatic cache invalidation
+- Optimistic UI updates
+- Simple, idiomatic Dioxus code
 
 ## Advanced Usage
 
@@ -187,7 +251,8 @@ clear_cache();
 
 The `examples` directory contains comprehensive demos.
 
-- `comprehensive_demo.rs`: Showcases all features working together. **A great place to start!**
+- `comprehensive_demo.rs`: Showcases all provider features working together. **A great place to start!**
+- `counter_mutation_demo.rs`: **NEW!** Complete mutation system demo with optimistic updates and cache invalidation.
 - `swr_demo.rs`: Focuses on the SWR pattern.
 - `cache_expiration_demo.rs`: Demonstrates TTL-based cache expiration.
 
@@ -195,6 +260,9 @@ To run an example:
 ```bash
 # Run the comprehensive demo
 cargo run --example comprehensive_demo
+
+# Run the mutation demo (NEW!)
+cargo run --example counter_mutation_demo
 
 # Or run a specific demo
 cargo run --example swr_demo

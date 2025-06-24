@@ -6,6 +6,7 @@ pub mod global;
 
 pub mod hooks;
 pub mod injection;
+pub mod mutation;
 pub mod platform;
 pub mod refresh;
 pub mod types;
@@ -15,7 +16,7 @@ pub mod prelude {
 
     // The main provider trait and the macro
     pub use crate::hooks::Provider;
-    pub use dioxus_provider_macros::provider;
+    pub use dioxus_provider_macros::{mutation, provider};
 
     // The core hook for using providers
     pub use crate::hooks::use_provider;
@@ -34,5 +35,11 @@ pub mod prelude {
     // Dependency Injection
     pub use crate::injection::{
         clear_dependencies, has_dependency, init_dependency_injection, inject, register_dependency,
+    };
+
+    // Mutation system - Manual Implementation Pattern
+    pub use crate::mutation::{
+        Mutation, MutationState, provider_cache_key, provider_cache_key_simple, use_mutation,
+        use_optimistic_mutation,
     };
 }
