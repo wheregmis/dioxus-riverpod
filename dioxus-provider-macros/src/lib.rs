@@ -650,6 +650,8 @@ fn to_pascal_case(s: &str) -> String {
 
 /// Generate dependency injection code
 fn generate_dependency_injection(inject_types: &[syn::Type], original_block: &syn::Block) -> syn::Block {
+    // Only emit dependency injection code if inject_types is non-empty.
+    // If no types are specified for injection, this function returns the original block unchanged.
     if inject_types.is_empty() {
         return original_block.clone();
     }

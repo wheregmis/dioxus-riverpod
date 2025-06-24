@@ -77,6 +77,9 @@ impl<T, E> MutationState<T, E> {
 /// Mutations are similar to providers but are designed for data modification operations.
 /// They typically involve server requests to create, update, or delete data.
 ///
+/// ## Usage
+/// Prefer using the `#[mutation]` macro to define mutations. Manual trait implementations are for advanced use only.
+///
 /// ## Example
 ///
 /// ```rust,no_run
@@ -116,20 +119,6 @@ where
     fn optimistic_invalidate(&self, _input: &Input) -> Vec<String> {
         Vec::new()
     }
-}
-
-/// Represents an optimistic update that can be applied to cache entries
-#[derive(Clone)]
-pub struct OptimisticUpdate {
-    /// Cache key to update
-    pub cache_key: String,
-}
-
-/// Data needed to rollback an optimistic update
-#[derive(Clone)]
-pub struct RollbackData {
-    /// Cache key that was optimistically updated
-    pub cache_key: String,
 }
 
 /// Hook to create a mutation that can be triggered manually

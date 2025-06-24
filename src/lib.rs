@@ -39,7 +39,7 @@ pub mod prelude {
 
     // Mutation system - Manual Implementation Pattern
     pub use crate::mutation::{
-        Mutation, MutationState, OptimisticUpdate, RollbackData, provider_cache_key,
-        provider_cache_key_simple, use_mutation, use_optimistic_mutation,
+        Mutation, MutationState, provider_cache_key, provider_cache_key_simple, use_mutation,
+        use_optimistic_mutation,
     };
 }
