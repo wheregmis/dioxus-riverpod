@@ -1185,7 +1185,7 @@ dependencies = [
  "chrono",
  "dioxus",
  "dioxus-lib",
- "dioxus-provider-macros",
+ "dioxus-provider-macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger",
  "tokio",
  "tracing",
@@ -1197,6 +1197,18 @@ dependencies = [
 [[package]]
 name = "dioxus-provider-macros"
 version = "0.1.1"
+dependencies = [
+ "humantime",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
+name = "dioxus-provider-macros"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfaf57017a07a297fe220038b68a9ecd1b934e97be7d6fedc5c80e71f342e792"
 dependencies = [
  "humantime",
  "proc-macro2",
