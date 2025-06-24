@@ -252,7 +252,7 @@ clear_cache();
 The `examples` directory contains comprehensive demos.
 
 - `comprehensive_demo.rs`: Showcases all provider features working together. **A great place to start!**
-- `mutation_demo.rs`: **NEW!** Complete mutation system demo with optimistic updates and cache invalidation.
+- `counter_mutation_demo.rs`: **NEW!** Complete mutation system demo with optimistic updates and cache invalidation.
 - `swr_demo.rs`: Focuses on the SWR pattern.
 - `cache_expiration_demo.rs`: Demonstrates TTL-based cache expiration.
 
