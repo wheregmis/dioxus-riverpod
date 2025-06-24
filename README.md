@@ -262,7 +262,7 @@ To run an example:
 cargo run --example comprehensive_demo
 
 # Run the mutation demo (NEW!)
-cargo run --example mutation_demo
+cargo run --example counter_mutation_demo
 
 # Or run a specific demo
 cargo run --example swr_demo
