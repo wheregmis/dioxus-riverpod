@@ -1,8 +1,9 @@
 use dioxus::prelude::*;
 use dioxus_provider::prelude::*;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
 
-static mut COUNTER: i32 = 0;
+static COUNTER: AtomicI32 = AtomicI32::new(0);
 
 #[provider]
 async fn get_counter() -> Result<i32, String> {
@@ -10,7 +11,7 @@ async fn get_counter() -> Result<i32, String> {
     tokio::time::sleep(Duration::from_millis(100)).await;
     #[cfg(target_family = "wasm")]
     wasmtimer::tokio::sleep(Duration::from_millis(100)).await;
-    unsafe { Ok(COUNTER) }
+    Ok(COUNTER.load(Ordering::SeqCst))
 }
 
 #[mutation(invalidates = [get_counter])]
@@ -19,10 +20,8 @@ async fn increment_counter() -> Result<i32, String> {
     tokio::time::sleep(Duration::from_millis(500)).await;
     #[cfg(target_family = "wasm")]
     wasmtimer::tokio::sleep(Duration::from_millis(500)).await;
-    unsafe {
-        COUNTER += 1;
-        Ok(COUNTER)
-    }
+    let val = COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+    Ok(val)
 }
 
 #[component]
@@ -63,9 +62,7 @@ fn CounterApp() -> Element {
 }
 
 fn main() {
-    unsafe {
-        COUNTER = 0;
-    }
+    COUNTER.store(0, Ordering::SeqCst);
     dioxus_provider::global::init_global_providers();
     dioxus::launch(CounterApp);
 }
