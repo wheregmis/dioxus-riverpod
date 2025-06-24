@@ -1,7 +1,7 @@
 [package]
 name = "dioxus-provider"
 description = "Data fetching and caching library for Dioxus applications with intelligent caching strategies and global providers."
-version = "0.0.2"
+version = "0.0.3"
 edition = "2024"
 license = "MIT"
 authors = ["Sabin Regmi <get2sabin@gmail.com>"]
