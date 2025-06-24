@@ -313,14 +313,14 @@ where
                             mutation.id()
                         );
 
-                        // Re-invalidate cache to ensure consistency after failure
-                        for cache_key in mutation.invalidates() {
+                        // Re-invalidate the same optimistic keys to trigger refetch and restore state
+                        for cache_key in &optimistic_keys {
                             debug!(
-                                "🔄 [ROLLBACK] Re-invalidating cache key after failure: {}",
+                                "🔄 [ROLLBACK] Re-invalidating optimistic cache key after failure: {}",
                                 cache_key
                             );
-                            cache.invalidate(&cache_key);
-                            refresh_registry.trigger_refresh(&cache_key);
+                            cache.invalidate(cache_key);
+                            refresh_registry.trigger_refresh(cache_key);
                         }
 
                         state.set(MutationState::Error(error));
