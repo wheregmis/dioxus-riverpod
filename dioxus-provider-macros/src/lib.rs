@@ -739,7 +739,7 @@ fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[P
             .collect();
 
         let join_stmt: syn::Stmt = syn::parse_quote! {
-            let (#(#result_vars,)*) = ::tokio::join!(
+            let (#(#result_vars,)*) = ::futures::join!(
                 #(#provider_calls,)*
             );
         };
@@ -760,7 +760,7 @@ fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[P
             .collect();
 
         let join_stmt: syn::Stmt = syn::parse_quote! {
-            let (#(#result_vars,)*) = ::tokio::join!(
+            let (#(#result_vars,)*) = ::futures::join!(
                 #(#provider_calls,)*
             );
         };
@@ -781,7 +781,7 @@ fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[P
             .collect();
 
         let join_stmt: syn::Stmt = syn::parse_quote! {
-            let (#(#result_vars,)*) = ::tokio::join!(
+            let (#(#result_vars,)*) = ::futures::join!(
                 #(#provider_calls,)*
             );
         };

@@ -3,6 +3,16 @@ use dioxus_provider::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::time::sleep;
+#[cfg(target_arch = "wasm32")]
+use wasmtimer::tokio::sleep;
+
 /// Demo showcasing composable providers - combining multiple providers into one
 ///
 /// This example demonstrates:
@@ -49,7 +59,7 @@ pub struct FullUserProfile {
 #[provider(cache_expiration = "2min")]
 async fn fetch_user(user_id: u32) -> Result<User, ProviderError> {
     // Simulate API delay
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(100)).await;
 
     match user_id {
         0 => Err(ProviderError::InvalidInput(
@@ -75,7 +85,7 @@ async fn fetch_user(user_id: u32) -> Result<User, ProviderError> {
 #[provider(cache_expiration = "5min")]
 async fn fetch_user_permissions(user_id: u32) -> Result<UserPermissions, ProviderError> {
     // Simulate API delay
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    sleep(Duration::from_millis(150)).await;
 
     match user_id {
         0 => Err(ProviderError::InvalidInput(
@@ -99,7 +109,7 @@ async fn fetch_user_permissions(user_id: u32) -> Result<UserPermissions, Provide
 #[provider(cache_expiration = "1min")]
 async fn fetch_user_settings(user_id: u32) -> Result<UserSettings, ProviderError> {
     // Simulate API delay
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    sleep(Duration::from_millis(80)).await;
 
     match user_id {
         0 => Err(ProviderError::InvalidInput(
@@ -127,7 +137,7 @@ async fn fetch_user_settings(user_id: u32) -> Result<UserSettings, ProviderError
 /// This runs all three providers in parallel and combines their results
 #[provider(compose = [fetch_user, fetch_user_permissions, fetch_user_settings], cache_expiration = "3min")]
 async fn fetch_full_user_profile(user_id: u32) -> Result<FullUserProfile, ProviderError> {
-    let start_time = std::time::Instant::now();
+    let start_time = Instant::now();
 
     // The composed results are automatically available as variables:
     // - fetch_user_result: Result<User, ProviderError>
