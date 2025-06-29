@@ -5,6 +5,7 @@
  * that don't fit well as provider parameters (e.g., API clients, databases).
  */
 
+use crate::errors::ProviderError;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
@@ -26,18 +27,19 @@ impl DependencyRegistry {
     }
 
     /// Register a dependency of type T
-    pub fn register<T: Send + Sync + 'static>(&self, dependency: T) -> Result<(), String> {
+    pub fn register<T: Send + Sync + 'static>(&self, dependency: T) -> Result<(), ProviderError> {
         let type_id = TypeId::of::<T>();
-        let mut deps = self
-            .dependencies
-            .write()
-            .map_err(|_| "Failed to acquire write lock on dependencies")?;
+        let mut deps = self.dependencies.write().map_err(|_| {
+            ProviderError::DependencyInjection(
+                "Failed to acquire write lock on dependencies".to_string(),
+            )
+        })?;
 
         if deps.contains_key(&type_id) {
-            return Err(format!(
+            return Err(ProviderError::DependencyInjection(format!(
                 "Dependency of type {} already registered",
                 std::any::type_name::<T>()
-            ));
+            )));
         }
 
         deps.insert(type_id, Arc::new(dependency));
@@ -45,25 +47,26 @@ impl DependencyRegistry {
     }
 
     /// Get a dependency of type T
-    pub fn get<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, String> {
+    pub fn get<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, ProviderError> {
         let type_id = TypeId::of::<T>();
-        let deps = self
-            .dependencies
-            .read()
-            .map_err(|_| "Failed to acquire read lock on dependencies")?;
-
-        let dependency = deps.get(&type_id).ok_or_else(|| {
-            format!(
-                "Dependency of type {} not found",
-                std::any::type_name::<T>()
+        let deps = self.dependencies.read().map_err(|_| {
+            ProviderError::DependencyInjection(
+                "Failed to acquire read lock on dependencies".to_string(),
             )
         })?;
 
+        let dependency = deps.get(&type_id).ok_or_else(|| {
+            ProviderError::DependencyInjection(format!(
+                "Dependency of type {} not found. Make sure to register it with register_dependency() first.",
+                std::any::type_name::<T>()
+            ))
+        })?;
+
         dependency.clone().downcast::<T>().map_err(|_| {
-            format!(
+            ProviderError::DependencyInjection(format!(
                 "Failed to downcast dependency of type {}",
                 std::any::type_name::<T>()
-            )
+            ))
         })
     }
 
@@ -77,21 +80,23 @@ impl DependencyRegistry {
     }
 
     /// Clear all dependencies (mainly for testing)
-    pub fn clear(&self) -> Result<(), String> {
-        let mut deps = self
-            .dependencies
-            .write()
-            .map_err(|_| "Failed to acquire write lock on dependencies")?;
+    pub fn clear(&self) -> Result<(), ProviderError> {
+        let mut deps = self.dependencies.write().map_err(|_| {
+            ProviderError::DependencyInjection(
+                "Failed to acquire write lock on dependencies".to_string(),
+            )
+        })?;
         deps.clear();
         Ok(())
     }
 
     /// Get all registered dependency type names (for debugging)
-    pub fn list_types(&self) -> Result<Vec<String>, String> {
-        let deps = self
-            .dependencies
-            .read()
-            .map_err(|_| "Failed to acquire read lock on dependencies")?;
+    pub fn list_types(&self) -> Result<Vec<String>, ProviderError> {
+        let deps = self.dependencies.read().map_err(|_| {
+            ProviderError::DependencyInjection(
+                "Failed to acquire read lock on dependencies".to_string(),
+            )
+        })?;
 
         // Note: We can't easily get type names from TypeId,
         // so this is mainly useful for debugging count
@@ -105,18 +110,24 @@ pub fn init_dependency_injection() {
 }
 
 /// Register a global dependency
-pub fn register_dependency<T: Send + Sync + 'static>(dependency: T) -> Result<(), String> {
-    let registry = DEPENDENCY_REGISTRY
-        .get()
-        .ok_or("Dependency registry not initialized. Call init_dependency_injection() first.")?;
+pub fn register_dependency<T: Send + Sync + 'static>(dependency: T) -> Result<(), ProviderError> {
+    let registry = DEPENDENCY_REGISTRY.get().ok_or_else(|| {
+        ProviderError::DependencyInjection(
+            "Dependency registry not initialized. Call init_dependency_injection() first."
+                .to_string(),
+        )
+    })?;
     registry.register(dependency)
 }
 
 /// Get a global dependency
-pub fn inject<T: Send + Sync + 'static>() -> Result<Arc<T>, String> {
-    let registry = DEPENDENCY_REGISTRY
-        .get()
-        .ok_or("Dependency registry not initialized. Call init_dependency_injection() first.")?;
+pub fn inject<T: Send + Sync + 'static>() -> Result<Arc<T>, ProviderError> {
+    let registry = DEPENDENCY_REGISTRY.get().ok_or_else(|| {
+        ProviderError::DependencyInjection(
+            "Dependency registry not initialized. Call init_dependency_injection() first."
+                .to_string(),
+        )
+    })?;
     registry.get()
 }
 
@@ -129,10 +140,10 @@ pub fn has_dependency<T: Send + Sync + 'static>() -> bool {
 }
 
 /// Clear all dependencies (mainly for testing)
-pub fn clear_dependencies() -> Result<(), String> {
-    let registry = DEPENDENCY_REGISTRY
-        .get()
-        .ok_or("Dependency registry not initialized")?;
+pub fn clear_dependencies() -> Result<(), ProviderError> {
+    let registry = DEPENDENCY_REGISTRY.get().ok_or_else(|| {
+        ProviderError::DependencyInjection("Dependency registry not initialized".to_string())
+    })?;
     registry.clear()
 }
 
@@ -213,7 +224,7 @@ mod tests {
         clear_dependencies().unwrap();
 
         // Try to inject non-existent dependency
-        let result: Result<Arc<TestService>, String> = inject();
+        let result: Result<Arc<TestService>, ProviderError> = inject();
         assert!(result.is_err());
     }
 }

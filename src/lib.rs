@@ -2,8 +2,8 @@
 
 // Core modules
 pub mod cache;
+pub mod errors;
 pub mod global;
-
 pub mod hooks;
 pub mod injection;
 pub mod mutation;
@@ -41,5 +41,11 @@ pub mod prelude {
     pub use crate::mutation::{
         Mutation, MutationState, provider_cache_key, provider_cache_key_simple, use_mutation,
         use_optimistic_mutation,
+    };
+
+    // Error types
+    pub use crate::errors::{
+        ApiError, ApiResult, DatabaseError, DatabaseResult, ProviderError, ProviderResult,
+        UserError, UserResult,
     };
 }
