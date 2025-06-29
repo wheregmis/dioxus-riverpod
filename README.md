@@ -21,7 +21,19 @@
 - **Automatic Refresh**: Keep data fresh with interval-based background refetching.
 - **Parameterized Queries**: Create providers that depend on dynamic arguments (e.g., fetching user data by ID).
 
-### Mutation System ✨ NEW!
+### Composable Providers ✨ NEW!
+- **Parallel Execution**: Run multiple providers simultaneously with `compose = [provider1, provider2, ...]` for significant performance gains.
+- **Type-Safe Composition**: Automatic result combination with compile-time safety guarantees.
+- **Flexible Composition**: Compose any subset of providers based on your specific needs.
+- **Error Aggregation**: Intelligent error handling across composed providers with proper error propagation.
+
+### Structured Error Handling ✨ NEW!
+- **Rich Error Types**: Comprehensive error hierarchy with `ProviderError`, `UserError`, `ApiError`, and `DatabaseError`.
+- **Actionable Error Messages**: Context-rich error information for better debugging and user feedback.
+- **Error Chaining**: Automatic error conversion and chaining using `#[from]` attributes.
+- **Backward Compatibility**: Seamless integration with existing String-based error handling.
+
+### Mutation System
 - **Manual Implementation Pattern**: Define data mutations using simple struct implementations.
 - **Optimistic Updates**: Immediate UI feedback with automatic rollback on failure.
 - **Smart Cache Invalidation**: Automatically refresh related providers after successful mutations.
@@ -155,13 +167,57 @@ async fn remove_todo(id: u32) -> Result<(), String> {
 }
 ```
 
-### 4. Example: Todo App
+## New Features in Latest Release
 
-See `examples/todo_macro_demo.rs` for a complete, minimal Todo app using macro-based mutations and providers:
-- Add, toggle, and remove todos
-- Automatic cache invalidation
-- Optimistic UI updates
-- Simple, idiomatic Dioxus code
+### Composable Providers: Parallel Data Loading
+
+Run multiple providers simultaneously for better performance:
+
+```rust,no_run
+// These providers will run in parallel
+#[provider(compose = [fetch_user, fetch_permissions, fetch_settings])]
+async fn fetch_complete_profile(user_id: u32) -> Result<UserProfile, ProviderError> {
+    // Results are automatically available as:
+    // - __dioxus_composed_fetch_user_result: Result<User, ProviderError>
+    // - __dioxus_composed_fetch_permissions_result: Result<Permissions, ProviderError>
+    // - __dioxus_composed_fetch_settings_result: Result<Settings, ProviderError>
+    
+    let user = __dioxus_composed_fetch_user_result?;
+    let permissions = __dioxus_composed_fetch_permissions_result?;
+    let settings = __dioxus_composed_fetch_settings_result?;
+    
+    Ok(UserProfile { user, permissions, settings })
+}
+```
+
+### Structured Error Handling
+
+Rich, actionable error types for better error handling:
+
+```rust,no_run
+use dioxus_provider::prelude::*;
+
+#[provider]
+async fn fetch_user_data(id: u32) -> Result<User, UserError> {
+    if id == 0 {
+        return Err(UserError::ValidationFailed {
+            field: "id".to_string(),
+            reason: "ID cannot be zero".to_string(),
+        });
+    }
+    
+    match api_client.get_user(id).await {
+        Ok(user) if user.is_suspended() => Err(UserError::Suspended {
+            reason: "Account temporarily suspended".to_string(),
+        }),
+        Ok(user) => Ok(user),
+        Err(_) => Err(UserError::NotFound { id }),
+    }
+}
+
+// Error types available: ProviderError, UserError, ApiError, DatabaseError
+// Full backward compatibility with String errors
+```
 
 ## Advanced Usage
 
@@ -249,23 +305,37 @@ clear_cache();
 
 ## Running The Examples
 
-The `examples` directory contains comprehensive demos.
+The `examples` directory contains comprehensive demos covering all library features.
 
+### Core Features
 - `comprehensive_demo.rs`: Showcases all provider features working together. **A great place to start!**
-- `counter_mutation_demo.rs`: **NEW!** Complete mutation system demo with optimistic updates and cache invalidation.
-- `swr_demo.rs`: Focuses on the SWR pattern.
-- `cache_expiration_demo.rs`: Demonstrates TTL-based cache expiration.
+- `counter_mutation_demo.rs`: Complete mutation system demo with optimistic updates and cache invalidation.
+
+### Error Handling & Composition
+- `structured_errors_demo.rs`: **NEW!** Demonstrates comprehensive structured error handling with `ProviderError`, `UserError`, `ApiError`, and `DatabaseError` types. Shows proper error UI feedback and validation patterns.
+- `composable_provider_demo.rs`: **NEW!** Showcases parallel provider composition for performance optimization. Demonstrates how to run multiple providers simultaneously and combine their results.
+- `dependency_injection_demo.rs`: Shows manual dependency injection patterns with `inject::<Type>()` for clean provider architecture.
+
+### Caching & Performance
+- `swr_demo.rs`: Focuses on the Stale-While-Revalidate pattern for instant data loading.
+- `cache_expiration_demo.rs`: Demonstrates TTL-based cache expiration strategies.
+- `interval_refresh_demo.rs`: Shows automatic background data refreshing with configurable intervals.
 
 To run an example:
 ```bash
-# Run the comprehensive demo
+# Run the comprehensive demo (recommended starting point)
 cargo run --example comprehensive_demo
 
-# Run the mutation demo (NEW!)
-cargo run --example counter_mutation_demo
+# Try the new error handling demo
+cargo run --example structured_errors_demo
 
-# Or run a specific demo
+# See parallel provider composition in action
+cargo run --example composable_provider_demo
+
+# Or run any specific demo
 cargo run --example swr_demo
+cargo run --example counter_mutation_demo
+cargo run --example dependency_injection_demo
 ```
 
 ## Ecosystem & Alternatives
