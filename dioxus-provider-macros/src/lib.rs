@@ -16,6 +16,7 @@ struct ProviderArgs {
     cache_expiration: Option<Duration>,
     stale_time: Option<Duration>,
     inject: Vec<syn::Type>, // New: list of types to inject
+    compose: Vec<syn::Ident>, // New: list of provider functions to compose
 }
 
 /// Attribute arguments for the mutation macro
@@ -64,6 +65,13 @@ impl Parse for ProviderArgs {
                     syn::bracketed!(content in input);
                     let types = content.parse_terminated(syn::Type::parse, Token![,])?;
                     args.inject = types.into_iter().collect();
+                }
+                "compose" => {
+                    // Parse compose list: compose = [provider1, provider2, ...]
+                    let content;
+                    syn::bracketed!(content in input);
+                    let providers = content.parse_terminated(syn::Ident::parse, Token![,])?;
+                    args.compose = providers.into_iter().collect();
                 }
                 _ => return Err(syn::Error::new_spanned(ident, "Unknown argument")),
             }
@@ -132,9 +140,18 @@ impl Parse for MutationArgs {
 /// - #[provider(stale_time = "30sec")] - serve stale data after 30 seconds, refresh in background
 /// - #[provider(stale_time = "2min")] - serve stale data after 2 minutes, refresh in background
 ///
+/// Dependency injection:
+/// - #[provider(inject = [ApiClient, Database])] - automatically inject dependencies
+///
+/// Composable providers:
+/// - #[provider(compose = [fetch_user, fetch_permissions])] - compose multiple providers
+/// - Composed providers run in parallel and their results are available as variables
+/// - Example: fetch_user_result and fetch_permissions_result
+///
 /// Can combine features:
 /// - #[provider(interval = "10s", cache_expiration = "1min")]
 /// - #[provider(stale_time = "5s", cache_expiration = "30s")]
+/// - #[provider(compose = [fetch_user, fetch_settings], inject = [ApiClient])]
 ///
 /// Supported humantime formats:
 /// - "5s", "30sec", "2min", "1h", "1day"
@@ -224,8 +241,11 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
         ..
     } = &info;
 
-    // Generate enhanced function body with dependency injection
-    let enhanced_fn_block = generate_dependency_injection(&provider_args.inject, fn_block);
+    // Extract parameters once
+    let params = extract_all_params(&input_fn)?;
+
+    // Generate enhanced function body with dependency injection and composition
+    let enhanced_fn_block = generate_enhanced_function_body(&provider_args.inject, &provider_args.compose, &params, fn_block);
 
     // Generate interval and cache expiration implementations
     let interval_impl = generate_interval_impl(&provider_args);
@@ -236,7 +256,7 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
     let common_struct = generate_common_struct_and_const(&info);
 
     // Determine parameter type and implementation based on function parameters
-    if input_fn.sig.inputs.is_empty() {
+    if params.is_empty() {
         // No parameters - Provider<()>
         Ok(quote! {
             #common_struct
@@ -260,68 +280,63 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
                 #stale_time_impl
             }
         })
+    } else if params.len() == 1 {
+        // Single parameter - Provider<ParamType>
+        let param = &params[0];
+        let param_name = &param.name;
+        let param_type = &param.ty;
+
+        Ok(quote! {
+            #common_struct
+
+            impl #struct_name {
+                #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
+                    #enhanced_fn_block
+                }
+            }
+
+            impl ::dioxus_provider::hooks::Provider<#param_type> for #struct_name {
+                type Output = #output_type;
+                type Error = #error_type;
+
+                fn run(&self, #param_name: #param_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                    Self::call(#param_name)
+                }
+
+                #interval_impl
+                #cache_expiration_impl
+                #stale_time_impl
+            }
+        })
     } else {
-        // Has parameters - extract and handle them
-        let params = extract_all_params(&input_fn)?;
+        // Multiple parameters - Provider<(Param1, Param2, ...)>
+        let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
+        let param_types: Vec<_> = params.iter().map(|p| &p.ty).collect();
+        let tuple_type = quote! { (#(#param_types,)*) };
 
-        if params.len() == 1 {
-            // Single parameter - Provider<ParamType>
-            let param = &params[0];
-            let param_name = &param.name;
-            let param_type = &param.ty;
+        Ok(quote! {
+            #common_struct
 
-            Ok(quote! {
-                #common_struct
+            impl #struct_name {
+                #fn_vis async fn call(#(#param_names: #param_types,)*) -> Result<#output_type, #error_type> {
+                    #enhanced_fn_block
+                }
+            }
 
-                impl #struct_name {
-                    #fn_vis async fn call(#param_name: #param_type) -> Result<#output_type, #error_type> {
-                        #enhanced_fn_block
-                    }
+            impl ::dioxus_provider::hooks::Provider<#tuple_type> for #struct_name {
+                type Output = #output_type;
+                type Error = #error_type;
+
+                fn run(&self, params: #tuple_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
+                    let (#(#param_names,)*) = params;
+                    Self::call(#(#param_names,)*)
                 }
 
-                impl ::dioxus_provider::hooks::Provider<#param_type> for #struct_name {
-                    type Output = #output_type;
-                    type Error = #error_type;
-
-                    fn run(&self, #param_name: #param_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
-                        Self::call(#param_name)
-                    }
-
-                    #interval_impl
-                    #cache_expiration_impl
-                    #stale_time_impl
-                }
-            })
-        } else {
-            // Multiple parameters - Provider<(Param1, Param2, ...)>
-            let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
-            let param_types: Vec<_> = params.iter().map(|p| &p.ty).collect();
-            let tuple_type = quote! { (#(#param_types,)*) };
-
-            Ok(quote! {
-                #common_struct
-
-                impl #struct_name {
-                    #fn_vis async fn call(#(#param_names: #param_types,)*) -> Result<#output_type, #error_type> {
-                        #enhanced_fn_block
-                    }
-                }
-
-                impl ::dioxus_provider::hooks::Provider<#tuple_type> for #struct_name {
-                    type Output = #output_type;
-                    type Error = #error_type;
-
-                    fn run(&self, params: #tuple_type) -> impl ::std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
-                        let (#(#param_names,)*) = params;
-                        Self::call(#(#param_names,)*)
-                    }
-
-                    #interval_impl
-                    #cache_expiration_impl
-                    #stale_time_impl
-                }
-            })
-        }
+                #interval_impl
+                #cache_expiration_impl
+                #stale_time_impl
+            }
+        })
     }
 }
 
@@ -337,8 +352,8 @@ fn generate_mutation(input_fn: ItemFn, mutation_args: MutationArgs) -> Result<To
         ..
     } = &info;
 
-    // Generate enhanced function body with dependency injection
-    let enhanced_fn_block = generate_dependency_injection(&mutation_args.inject, fn_block);
+    // Generate enhanced function body with dependency injection and composition
+    let enhanced_fn_block = generate_enhanced_function_body(&mutation_args.inject, &[], &[], fn_block);
 
     // Generate invalidation implementation
     let invalidation_impl = generate_invalidation_impl(&mutation_args);
@@ -648,33 +663,130 @@ fn to_pascal_case(s: &str) -> String {
     result
 }
 
-/// Generate dependency injection code
-fn generate_dependency_injection(inject_types: &[syn::Type], original_block: &syn::Block) -> syn::Block {
-    // Only emit dependency injection code if inject_types is non-empty.
-    // If no types are specified for injection, this function returns the original block unchanged.
-    if inject_types.is_empty() {
-        return original_block.clone();
+/// Generate enhanced function body with dependency injection and composition
+fn generate_enhanced_function_body(
+    inject_types: &[syn::Type], 
+    compose_providers: &[syn::Ident],
+    params: &[ParamInfo],
+    original_block: &syn::Block
+) -> syn::Block {
+    let mut statements = Vec::new();
+    
+    // Add dependency injection statements
+    if !inject_types.is_empty() {
+        let injection_stmts: Vec<_> = inject_types
+            .iter()
+            .map(|ty| {
+                let var_name = syn::Ident::new(
+                    &format!("injected_{}", to_pascal_case(&quote!(#ty).to_string().to_lowercase())),
+                    proc_macro2::Span::call_site(),
+                );
+                
+                syn::parse_quote! {
+                    let #var_name = ::dioxus_provider::injection::inject::<#ty>()
+                        .map_err(|e| format!("Dependency injection failed for {}: {}", stringify!(#ty), e))?;
+                }
+            })
+            .collect();
+        
+        statements.extend(injection_stmts);
+    }
+    
+    // Add composition statements
+    if !compose_providers.is_empty() {
+        let composition_statements = generate_composition_statements(compose_providers, params);
+        statements.extend(composition_statements);
+    }
+    
+    // Add original function body statements
+    statements.extend(original_block.stmts.clone());
+    
+    syn::Block {
+        brace_token: original_block.brace_token,
+        stmts: statements,
+    }
+}
+
+/// Generate composition statements that can be directly added to a statement list
+fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[ParamInfo]) -> Vec<syn::Stmt> {
+    if compose_providers.is_empty() {
+        return vec![];
     }
 
-    // Create injection statements
-    let injection_stmts: Vec<_> = inject_types
+    let mut statements = Vec::new();
+
+    // Generate variable names for composed results
+    let result_vars: Vec<_> = compose_providers
         .iter()
-        .map(|ty| {
-            let var_name = syn::Ident::new(
-                &format!("injected_{}", to_pascal_case(&quote!(#ty).to_string().to_lowercase())),
+        .map(|provider| {
+            syn::Ident::new(
+                &format!("{}_result", provider.to_string()),
                 proc_macro2::Span::call_site(),
-            );
-            
-            syn::parse_quote! {
-                let #var_name = ::dioxus_provider::injection::inject::<#ty>()
-                    .map_err(|e| format!("Dependency injection failed for {}: {}", stringify!(#ty), e))?;
-            }
+            )
         })
         .collect();
 
-    // Create new block with injection statements
-    let mut new_block = original_block.clone();
-    new_block.stmts.splice(0..0, injection_stmts);
+    // Generate provider calls based on parameter count
+    if params.is_empty() {
+        // No parameters - call providers with ()
+        let provider_calls: Vec<_> = compose_providers
+            .iter()
+            .map(|provider| {
+                quote! {
+                    async { #provider().run(()).await }
+                }
+            })
+            .collect();
 
-    new_block
+        let join_stmt: syn::Stmt = syn::parse_quote! {
+            let (#(#result_vars,)*) = ::tokio::join!(
+                #(#provider_calls,)*
+            );
+        };
+        statements.push(join_stmt);
+    } else if params.len() == 1 {
+        // Single parameter - capture it in async blocks
+        let param_name = &params[0].name;
+        let provider_calls: Vec<_> = compose_providers
+            .iter()
+            .map(|provider| {
+                quote! {
+                    async { 
+                        let param = #param_name; 
+                        #provider().run(param).await 
+                    }
+                }
+            })
+            .collect();
+
+        let join_stmt: syn::Stmt = syn::parse_quote! {
+            let (#(#result_vars,)*) = ::tokio::join!(
+                #(#provider_calls,)*
+            );
+        };
+        statements.push(join_stmt);
+    } else {
+        // Multiple parameters - capture them in async blocks
+        let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
+        let provider_calls: Vec<_> = compose_providers
+            .iter()
+            .map(|provider| {
+                quote! {
+                    async { 
+                        let params = (#(#param_names,)*); 
+                        #provider().run(params).await 
+                    }
+                }
+            })
+            .collect();
+
+        let join_stmt: syn::Stmt = syn::parse_quote! {
+            let (#(#result_vars,)*) = ::tokio::join!(
+                #(#provider_calls,)*
+            );
+        };
+        statements.push(join_stmt);
+    }
+
+    statements
 }
