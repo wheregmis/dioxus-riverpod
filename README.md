@@ -167,14 +167,6 @@ async fn remove_todo(id: u32) -> Result<(), String> {
 }
 ```
 
-### 4. Example: Todo App
-
-See `examples/todo_macro_demo.rs` for a complete, minimal Todo app using macro-based mutations and providers:
-- Add, toggle, and remove todos
-- Automatic cache invalidation
-- Optimistic UI updates
-- Simple, idiomatic Dioxus code
-
 ## New Features in Latest Release
 
 ### Composable Providers: Parallel Data Loading
@@ -186,13 +178,13 @@ Run multiple providers simultaneously for better performance:
 #[provider(compose = [fetch_user, fetch_permissions, fetch_settings])]
 async fn fetch_complete_profile(user_id: u32) -> Result<UserProfile, ProviderError> {
     // Results are automatically available as:
-    // - fetch_user_result: Result<User, ProviderError>
-    // - fetch_permissions_result: Result<Permissions, ProviderError>
-    // - fetch_settings_result: Result<Settings, ProviderError>
+    // - __dioxus_composed_fetch_user_result: Result<User, ProviderError>
+    // - __dioxus_composed_fetch_permissions_result: Result<Permissions, ProviderError>
+    // - __dioxus_composed_fetch_settings_result: Result<Settings, ProviderError>
     
-    let user = fetch_user_result?;
-    let permissions = fetch_permissions_result?;
-    let settings = fetch_settings_result?;
+    let user = __dioxus_composed_fetch_user_result?;
+    let permissions = __dioxus_composed_fetch_permissions_result?;
+    let settings = __dioxus_composed_fetch_settings_result?;
     
     Ok(UserProfile { user, permissions, settings })
 }

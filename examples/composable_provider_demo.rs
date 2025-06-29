@@ -156,16 +156,16 @@ async fn fetch_full_user_profile(user_id: u32) -> Result<FullUserProfile, Provid
     let start_time = Instant::now();
 
     // The composed results are automatically available as variables:
-    // - fetch_user_result: Result<User, ProviderError>
-    // - fetch_user_permissions_result: Result<UserPermissions, ProviderError>
-    // - fetch_user_settings_result: Result<UserSettings, ProviderError>
+    // - __dioxus_composed_fetch_user_result: Result<User, ProviderError>
+    // - __dioxus_composed_fetch_user_permissions_result: Result<UserPermissions, ProviderError>
+    // - __dioxus_composed_fetch_user_settings_result: Result<UserSettings, ProviderError>
 
     // All three providers have been called in parallel with user_id
     // We can now combine their results
 
-    let user = fetch_user_result?;
-    let permissions = fetch_user_permissions_result?;
-    let settings = fetch_user_settings_result?;
+    let user = __dioxus_composed_fetch_user_result?;
+    let permissions = __dioxus_composed_fetch_user_permissions_result?;
+    let settings = __dioxus_composed_fetch_user_settings_result?;
 
     let loading_time = start_time.elapsed();
 
@@ -185,11 +185,11 @@ async fn fetch_user_with_permissions(
     user_id: u32,
 ) -> Result<(User, UserPermissions), ProviderError> {
     // The composed results are available as:
-    // - fetch_user_result: Result<User, ProviderError>
-    // - fetch_user_permissions_result: Result<UserPermissions, ProviderError>
+    // - __dioxus_composed_fetch_user_result: Result<User, ProviderError>
+    // - __dioxus_composed_fetch_user_permissions_result: Result<UserPermissions, ProviderError>
 
-    let user = fetch_user_result?;
-    let permissions = fetch_user_permissions_result?;
+    let user = __dioxus_composed_fetch_user_result?;
+    let permissions = __dioxus_composed_fetch_user_permissions_result?;
 
     Ok((user, permissions))
 }

@@ -164,10 +164,10 @@ impl Parse for MutationArgs {
 /// #[provider(compose = [fetch_user, fetch_settings], cache_expiration = "3min")]
 /// async fn fetch_full_profile(user_id: u32) -> Result<FullProfile, String> {
 ///     // Composed results automatically available as variables:
-///     // - fetch_user_result: Result<User, String>
-///     // - fetch_settings_result: Result<Settings, String>
-///     let user = fetch_user_result?;
-///     let settings = fetch_settings_result?;
+///     // - __dioxus_composed_fetch_user_result: Result<User, String>
+///     // - __dioxus_composed_fetch_settings_result: Result<Settings, String>
+///     let user = __dioxus_composed_fetch_user_result?;
+///     let settings = __dioxus_composed_fetch_settings_result?;
 ///     Ok(FullProfile { user, settings })
 /// }
 /// ```
@@ -771,12 +771,12 @@ fn generate_composition_statements(
     // Add compile-time validation checks for better error messages
     statements.extend(generate_validation_statements(compose_providers, params));
 
-    // Generate variable names for composed results
+    // Generate variable names for composed results with unique prefix to avoid collisions
     let result_vars: Vec<_> = compose_providers
         .iter()
         .map(|provider| {
             syn::Ident::new(
-                &format!("{}_result", provider.to_string()),
+                &format!("__dioxus_composed_{}_result", provider.to_string()),
                 proc_macro2::Span::call_site(),
             )
         })
