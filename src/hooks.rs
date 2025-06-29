@@ -268,10 +268,83 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
     }
 }
 
-/// Trait for unified provider usage - automatically handles providers with and without parameters
+/// Trait for normalizing different parameter formats to work with providers
 ///
-/// This trait is implemented for all Provider types and provides a unified interface
-/// for using providers regardless of whether they take parameters or not.
+/// This trait allows the `use_provider` hook to accept parameters in different formats:
+/// - `()` for no parameters
+/// - `(param,)` for single parameter in tuple  
+/// - Common primitive types directly
+/// 
+/// This eliminates the need for multiple `UseProvider` implementations.
+pub trait IntoProviderParam {
+    /// The target parameter type after conversion
+    type Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static;
+    
+    /// Convert the input into the parameter format expected by the provider
+    fn into_param(self) -> Self::Param;
+}
+
+// Implementation for no parameters: () -> ()
+impl IntoProviderParam for () {
+    type Param = ();
+    
+    fn into_param(self) -> Self::Param {
+        ()
+    }
+}
+
+// Implementation for tuple parameters: (Param,) -> Param  
+impl<T> IntoProviderParam for (T,) 
+where 
+    T: Clone + PartialEq + Hash + Debug + Send + Sync + 'static
+{
+    type Param = T;
+    
+    fn into_param(self) -> Self::Param {
+        self.0
+    }
+}
+
+// Common direct parameter implementations to avoid conflicts
+impl IntoProviderParam for u32 {
+    type Param = u32;
+    
+    fn into_param(self) -> Self::Param {
+        self
+    }
+}
+
+impl IntoProviderParam for i32 {
+    type Param = i32;
+    
+    fn into_param(self) -> Self::Param {
+        self
+    }
+}
+
+impl IntoProviderParam for String {
+    type Param = String;
+    
+    fn into_param(self) -> Self::Param {
+        self
+    }
+}
+
+impl IntoProviderParam for &str {
+    type Param = String;
+    
+    fn into_param(self) -> Self::Param {
+        self.to_string()
+    }
+}
+
+/// Unified trait for using providers with any parameter format
+///
+/// This trait provides a single, unified interface for using providers
+/// regardless of their parameter format. It automatically handles:
+/// - No parameters `()`
+/// - Tuple parameters `(param,)`  
+/// - Direct parameters `param`
 pub trait UseProvider<Args> {
     /// The type of data returned on success
     type Output: Clone + PartialEq + Send + Sync + 'static;
@@ -282,7 +355,120 @@ pub trait UseProvider<Args> {
     fn use_provider(self, args: Args) -> Signal<AsyncState<Self::Output, Self::Error>>;
 }
 
-// Helper functions for common provider operations
+/// Unified implementation for all providers using parameter normalization
+///
+/// This single implementation replaces all the previous repetitive implementations
+/// by using the `IntoProviderParam` trait to normalize different parameter formats.
+impl<P, Args> UseProvider<Args> for P
+where
+    P: Provider<Args::Param> + Send + Clone,
+    Args: IntoProviderParam,
+{
+    type Output = P::Output;
+    type Error = P::Error;
+
+    fn use_provider(self, args: Args) -> Signal<AsyncState<Self::Output, Self::Error>> {
+        let param = args.into_param();
+        use_provider_core(self, param)
+    }
+}
+
+/// Core provider implementation that handles all the common logic
+fn use_provider_core<P, Param>(provider: P, param: Param) -> Signal<AsyncState<P::Output, P::Error>>
+where
+    P: Provider<Param> + Send + Clone,
+    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+{
+    let mut state = use_signal(|| AsyncState::Loading);
+    let cache = get_provider_cache();
+    let refresh_registry = get_refresh_registry();
+
+    let cache_key = provider.id(&param);
+    let cache_expiration = provider.cache_expiration();
+
+    // Setup intelligent cache management (replaces old auto-dispose system)
+    setup_intelligent_cache_management(&provider, &cache_key, &cache, &refresh_registry);
+
+    // Check cache expiration before the memo - this happens on every render
+    check_and_handle_cache_expiration(cache_expiration, &cache_key, &cache, &refresh_registry);
+
+    // SWR staleness checking - runs on every render to check for stale data
+    check_and_handle_swr_core(&provider, &param, &cache_key, &cache, &refresh_registry);
+
+    // Use memo with reactive dependencies to track changes automatically
+    let _execution_memo = use_memo(use_reactive!(|(provider, param)| {
+        let cache_key = provider.id(&param);
+
+        debug!(
+            "🔄 [USE_PROVIDER] Memo executing for key: {} with param: {:?}",
+            cache_key, param
+        );
+
+        // Subscribe to refresh events for this cache key if we have a reactive context
+        if let Some(reactive_context) = ReactiveContext::current() {
+            refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
+        }
+
+        // Read the current refresh count (this makes the memo reactive to changes)
+        let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
+
+        // Set up cache expiration monitoring task
+        setup_cache_expiration_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
+
+        // Set up interval task if provider has interval configured
+        setup_interval_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
+
+        // Set up stale check task if provider has stale time configured
+        setup_stale_check_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
+
+        // Check cache for valid data
+        if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
+            // Access tracking is automatically handled by cache.get() updating last_accessed time
+            debug!("📊 [CACHE-HIT] Serving cached data for: {}", cache_key);
+
+            match cached_result {
+                Ok(data) => {
+                    let _ = spawn(async move {
+                        state.set(AsyncState::Success(data));
+                    });
+                }
+                Err(error) => {
+                    let _ = spawn(async move {
+                        state.set(AsyncState::Error(error));
+                    });
+                }
+            }
+            return;
+        }
+
+        // Cache miss - set loading and spawn async task
+        let _ = spawn(async move {
+            state.set(AsyncState::Loading);
+        });
+
+        let cache = cache.clone();
+        let cache_clone = cache.clone();
+        let cache_key_clone = cache_key.clone();
+        let provider = provider.clone();
+        let param = param.clone();
+        let mut state_for_async = state;
+
+        spawn(async move {
+            let result = provider.run(param).await;
+            cache_clone.set(cache_key_clone.clone(), result.clone());
+
+            // Access tracking is automatically handled when data is stored and accessed
+            debug!("📊 [CACHE-STORE] Stored new data for: {}", cache_key_clone);
+
+            match result {
+                Ok(data) => state_for_async.set(AsyncState::Success(data)),
+                Err(error) => state_for_async.set(AsyncState::Error(error)),
+            }
+        });
+    }));
+
+    state
+}
 
 /// Performs SWR staleness checking and triggers background revalidation if needed
 fn check_and_handle_swr_core<P, Param>(
@@ -447,170 +633,6 @@ fn setup_stale_check_task_core<P, Param>(
     }
 }
 
-/// Core provider implementation that handles all the common logic
-fn use_provider_core<P, Param>(provider: P, param: Param) -> Signal<AsyncState<P::Output, P::Error>>
-where
-    P: Provider<Param> + Send + Clone,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
-{
-    let mut state = use_signal(|| AsyncState::Loading);
-    let cache = get_provider_cache();
-    let refresh_registry = get_refresh_registry();
-
-    let cache_key = provider.id(&param);
-    let cache_expiration = provider.cache_expiration();
-
-    // Setup intelligent cache management (replaces old auto-dispose system)
-    setup_intelligent_cache_management(&provider, &cache_key, &cache, &refresh_registry);
-
-    // Check cache expiration before the memo - this happens on every render
-    check_and_handle_cache_expiration(cache_expiration, &cache_key, &cache, &refresh_registry);
-
-    // SWR staleness checking - runs on every render to check for stale data
-    check_and_handle_swr_core(&provider, &param, &cache_key, &cache, &refresh_registry);
-
-    // Use memo with reactive dependencies to track changes automatically
-    let _execution_memo = use_memo(use_reactive!(|(provider, param)| {
-        let cache_key = provider.id(&param);
-
-        debug!(
-            "🔄 [USE_PROVIDER] Memo executing for key: {} with param: {:?}",
-            cache_key, param
-        );
-
-        // Subscribe to refresh events for this cache key if we have a reactive context
-        if let Some(reactive_context) = ReactiveContext::current() {
-            refresh_registry.subscribe_to_refresh(&cache_key, reactive_context);
-        }
-
-        // Read the current refresh count (this makes the memo reactive to changes)
-        let _current_refresh_count = refresh_registry.get_refresh_count(&cache_key);
-
-        // Set up cache expiration monitoring task
-        setup_cache_expiration_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
-
-        // Set up interval task if provider has interval configured
-        setup_interval_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
-
-        // Set up stale check task if provider has stale time configured
-        setup_stale_check_task_core(&provider, &param, &cache_key, &cache, &refresh_registry);
-
-        // Check cache for valid data
-        if let Some(cached_result) = cache.get::<Result<P::Output, P::Error>>(&cache_key) {
-            // Access tracking is automatically handled by cache.get() updating last_accessed time
-            debug!("📊 [CACHE-HIT] Serving cached data for: {}", cache_key);
-
-            match cached_result {
-                Ok(data) => {
-                    let _ = spawn(async move {
-                        state.set(AsyncState::Success(data));
-                    });
-                }
-                Err(error) => {
-                    let _ = spawn(async move {
-                        state.set(AsyncState::Error(error));
-                    });
-                }
-            }
-            return;
-        }
-
-        // Cache miss - set loading and spawn async task
-        let _ = spawn(async move {
-            state.set(AsyncState::Loading);
-        });
-
-        let cache = cache.clone();
-        let cache_clone = cache.clone();
-        let cache_key_clone = cache_key.clone();
-        let provider = provider.clone();
-        let param = param.clone();
-        let mut state_for_async = state;
-
-        spawn(async move {
-            let result = provider.run(param).await;
-            cache_clone.set(cache_key_clone.clone(), result.clone());
-
-            // Access tracking is automatically handled when data is stored and accessed
-            debug!("📊 [CACHE-STORE] Stored new data for: {}", cache_key_clone);
-
-            match result {
-                Ok(data) => state_for_async.set(AsyncState::Success(data)),
-                Err(error) => state_for_async.set(AsyncState::Error(error)),
-            }
-        });
-    }));
-
-    state
-}
-
-/// Implementation for providers with no parameters (simple providers)
-impl<P> UseProvider<()> for P
-where
-    P: Provider<()> + Send,
-{
-    type Output = P::Output;
-    type Error = P::Error;
-
-    fn use_provider(self, _args: ()) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        use_provider_core(self, ())
-    }
-}
-
-/// Implementation for providers with parameters (parameterized providers)
-impl<P, Param> UseProvider<(Param,)> for P
-where
-    P: Provider<Param> + Send,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
-{
-    type Output = P::Output;
-    type Error = P::Error;
-
-    fn use_provider(self, args: (Param,)) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        let param = args.0;
-        use_provider_core(self, param)
-    }
-}
-
-/// Implementation for providers with a single u32 parameter (without tuple wrapper)
-impl<P> UseProvider<u32> for P
-where
-    P: Provider<u32> + Send,
-{
-    type Output = P::Output;
-    type Error = P::Error;
-
-    fn use_provider(self, args: u32) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        use_provider_core(self, args)
-    }
-}
-
-/// Implementation for providers with a single String parameter (without tuple wrapper)
-impl<P> UseProvider<String> for P
-where
-    P: Provider<String> + Send,
-{
-    type Output = P::Output;
-    type Error = P::Error;
-
-    fn use_provider(self, args: String) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        use_provider_core(self, args)
-    }
-}
-
-/// Implementation for providers with a single i32 parameter (without tuple wrapper)
-impl<P> UseProvider<i32> for P
-where
-    P: Provider<i32> + Send,
-{
-    type Output = P::Output;
-    type Error = P::Error;
-
-    fn use_provider(self, args: i32) -> Signal<AsyncState<Self::Output, Self::Error>> {
-        use_provider_core(self, args)
-    }
-}
-
 /// Shared cache expiration logic
 fn check_and_handle_cache_expiration(
     cache_expiration: Option<Duration>,
@@ -633,61 +655,6 @@ fn check_and_handle_cache_expiration(
             }
         }
     }
-}
-
-/// Unified hook for using any provider - automatically detects parameterized vs non-parameterized providers
-///
-/// This is the main hook for consuming providers in Dioxus components. It automatically
-/// handles both simple providers (no parameters) and parameterized providers, providing
-/// a consistent interface for all provider types.
-///
-/// ## Features
-///
-/// - **Automatic Caching**: Results are cached based on provider configuration
-/// - **Reactive Updates**: Components automatically re-render when data changes
-/// - **Loading States**: Provides loading, success, and error states
-/// - **Background Refresh**: Supports interval refresh and stale-while-revalidate
-/// - **Auto-Dispose**: Automatically cleans up unused providers
-///
-/// ## Usage
-///
-/// ```rust,no_run
-/// use dioxus::prelude::*;
-/// use dioxus_provider::prelude::*;
-///
-/// #[derive(Clone, PartialEq)]
-/// struct DataProvider;
-///
-/// impl Provider<()> for DataProvider {
-///     type Output = String;
-///     type Error = String;
-///
-///     async fn run(&self, _: ()) -> Result<Self::Output, Self::Error> {
-///         Ok("Hello World".to_string())
-///     }
-///
-///     fn id(&self, _: &()) -> String {
-///         "data".to_string()
-///     }
-/// }
-///
-/// #[component]
-/// fn MyComponent() -> Element {
-///     // Provider with no parameters
-///     let data = use_provider(DataProvider, ());
-///     
-///     match *data.read() {
-///         AsyncState::Loading => rsx! { div { "Loading..." } },
-///         AsyncState::Success(ref value) => rsx! { div { "{value}" } },
-///         AsyncState::Error(ref _err) => rsx! { div { "Error occurred" } },
-///     }
-/// }
-/// ```
-pub fn use_provider<P, Args>(provider: P, args: Args) -> Signal<AsyncState<P::Output, P::Error>>
-where
-    P: UseProvider<Args>,
-{
-    provider.use_provider(args)
 }
 
 /// Sets up intelligent cache management for a provider
@@ -739,4 +706,60 @@ fn setup_intelligent_cache_management<P, Param>(
 
         debug!("📊 [SMART-CACHE] Intelligent cache management enabled for: {} (cleanup every {:?})", cache_key, cleanup_interval);
     }
+}
+
+/// Unified hook for using any provider - automatically detects parameterized vs non-parameterized providers
+///
+/// This is the main hook for consuming providers in Dioxus components. It automatically
+/// handles both simple providers (no parameters) and parameterized providers, providing
+/// a consistent interface for all provider types through the `IntoProviderParam` trait.
+///
+/// ## Supported Parameter Formats
+///
+/// - **No parameters**: `use_provider(provider, ())`
+/// - **Tuple parameters**: `use_provider(provider, (param,))`  
+/// - **Direct parameters**: `use_provider(provider, param)`
+///
+/// ## Features
+///
+/// - **Automatic Caching**: Results are cached based on provider configuration
+/// - **Reactive Updates**: Components automatically re-render when data changes
+/// - **Loading States**: Provides loading, success, and error states
+/// - **Background Refresh**: Supports interval refresh and stale-while-revalidate
+/// - **Auto-Dispose**: Automatically cleans up unused providers
+/// - **Unified API**: Single function handles all parameter formats
+///
+/// ## Usage Examples
+///
+/// ```rust,no_run
+/// use dioxus::prelude::*;
+/// use dioxus_provider::prelude::*;
+///
+/// #[provider]
+/// async fn fetch_user() -> Result<String, String> {
+///     Ok("User data".to_string())
+/// }
+///
+/// #[provider]
+/// async fn fetch_user_by_id(user_id: u32) -> Result<String, String> {
+///     Ok(format!("User {}", user_id))
+/// }
+///
+/// #[component]
+/// fn MyComponent() -> Element {
+///     // All of these work seamlessly:
+///     let user = use_provider(fetch_user(), ());           // No parameters
+///     let user_by_id = use_provider(fetch_user_by_id(), 123);     // Direct parameter
+///     let user_by_id_tuple = use_provider(fetch_user_by_id(), (123,)); // Tuple parameter
+///     
+///     rsx! {
+///         div { "Users loaded!" }
+///     }
+/// }
+/// ```
+pub fn use_provider<P, Args>(provider: P, args: Args) -> Signal<AsyncState<P::Output, P::Error>>
+where
+    P: UseProvider<Args>,
+{
+    provider.use_provider(args)
 }
