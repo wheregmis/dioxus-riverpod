@@ -1,3 +1,19 @@
+//! # Composable Provider Demo
+//!
+//! This example demonstrates the powerful composable provider feature that allows
+//! providers to run in parallel and combine their results. The demo uses CSS inlining
+//! with `include_str!("./assets/composable_provider_styles.css")` for better cross-platform
+//! compatibility and follows the standard Dioxus pattern.
+//!
+//! Features demonstrated:
+//! - Parallel provider execution with `compose = [provider1, provider2, ...]`
+//! - Type-safe result composition
+//! - Performance comparison between sequential and parallel loading
+//! - Partial composition for selective provider execution
+//! - Error handling in composed providers
+//! - Responsive design with properly inlined CSS styling
+//! - Cross-platform compatibility (web, desktop, mobile)
+
 use dioxus::prelude::*;
 use dioxus_provider::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -50,7 +66,7 @@ pub struct FullUserProfile {
     pub user: User,
     pub permissions: UserPermissions,
     pub settings: UserSettings,
-    pub loading_time_ms: u64,
+    pub load_time_ms: u64,
 }
 
 // Individual providers that can be composed
@@ -157,7 +173,7 @@ async fn fetch_full_user_profile(user_id: u32) -> Result<FullUserProfile, Provid
         user,
         permissions,
         settings,
-        loading_time_ms: loading_time.as_millis() as u64,
+        load_time_ms: loading_time.as_millis() as u64,
     })
 }
 
@@ -189,29 +205,27 @@ fn App() -> Element {
     let mut user_id = use_signal(|| 1u32);
 
     rsx! {
-        div { style: "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px;",
+        div { class: "container",
 
             // Header
-            div { style: "text-align: center; margin-bottom: 30px;",
-                h1 { style: "color: #2c3e50; margin-bottom: 10px;", "🚀 Composable Provider Demo" }
-                p { style: "color: #666; font-size: 18px;",
-                    "Demonstrates the power of composable providers in parallel execution"
-                }
+            div { class: "header",
+                h1 { "🚀 Composable Provider Demo" }
+                p { "Demonstrates the power of composable providers in parallel execution" }
 
                 // User selection buttons
-                div { style: "margin: 20px 0;",
+                div { class: "user-selector",
                     button {
-                        style: "margin: 0 10px; padding: 10px 20px; background: #007acc; color: white; border: none; border-radius: 6px; cursor: pointer;",
+                        class: "user-button primary",
                         onclick: move |_| { *user_id.write() = 1; },
                         "Load User 1"
                     }
                     button {
-                        style: "margin: 0 10px; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer;",
+                        class: "user-button primary",
                         onclick: move |_| { *user_id.write() = 2; },
                         "Load User 2"
                     }
                     button {
-                        style: "margin: 0 10px; padding: 10px 20px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer;",
+                        class: "user-button danger",
                         onclick: move |_| { *user_id.write() = 999; },
                         "Load Non-existent User (Error)"
                     }
@@ -221,53 +235,47 @@ fn App() -> Element {
             }
 
             // Performance comparison section
-            div { style: "background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;",
-                h2 { style: "color: #495057; margin-top: 0;", "⚡ Performance Comparison" }
-                p { style: "color: #666; margin-bottom: 20px;",
-                    "Compare sequential loading (individual providers) vs parallel loading (composable providers)"
-                }
+            div { class: "section",
+                h2 { "⚡ Performance Comparison" }
+                p { "Compare sequential loading (individual providers) vs parallel loading (composable providers)" }
             }
 
             // Individual providers (sequential loading simulation)
-            div { style: "margin-bottom: 40px;",
-                div { style: "background: linear-gradient(90deg, #ffeaa7, #fab1a0); padding: 15px; border-radius: 8px; margin-bottom: 15px;",
-                    h2 { style: "margin: 0; color: #2d3436;", "🐌 Individual Providers (Sequential Loading Simulation)" }
-                    p { style: "margin: 5px 0 0 0; color: #636e72;", "Each provider loads independently, taking longer total time" }
-                }
+            div { class: "section",
+                h2 { "🐌 Individual Providers (Sequential Loading Simulation)" }
+                p { "Each provider loads independently, taking longer total time" }
                 IndividualProvidersDemo { user_id: *user_id.read() }
             }
 
             // Composable provider (parallel loading)
-            div { style: "margin-bottom: 40px;",
-                div { style: "background: linear-gradient(90deg, #a8e6cf, #81c784); padding: 15px; border-radius: 8px; margin-bottom: 15px;",
-                    h2 { style: "margin: 0; color: #1b5e20;", "⚡ Composable Provider (Parallel Loading)" }
-                    p { style: "margin: 5px 0 0 0; color: #2e7d32;", "All providers execute in parallel, significantly faster!" }
-                }
+            div { class: "section success",
+                h2 { "⚡ Composable Provider (Parallel Loading)" }
+                p { "All providers execute in parallel, significantly faster!" }
                 ComposableProviderDemo { user_id: *user_id.read() }
             }
 
             // Partial composition demo
-            div { style: "margin-bottom: 40px;",
-                div { style: "background: linear-gradient(90deg, #dda0dd, #ba68c8); padding: 15px; border-radius: 8px; margin-bottom: 15px;",
-                    h2 { style: "margin: 0; color: #4a148c;", "🔗 Partial Composition" }
-                    p { style: "margin: 5px 0 0 0; color: #6a1b9a;", "Compose only specific providers as needed" }
-                }
+            div { class: "section",
+                h2 { "🔗 Partial Composition" }
+                p { "Compose only specific providers as needed" }
                 PartialCompositionDemo { user_id: *user_id.read() }
             }
 
             // Information section
-            div { style: "background: #e3f2fd; padding: 20px; border-radius: 8px; border-left: 5px solid #2196f3;",
-                h3 { style: "color: #1976d2; margin-top: 0;", "💡 Key Benefits of Composable Providers" }
-                ul { style: "color: #424242;",
-                    li { "⚡ " strong { "Parallel Execution: " } "All composed providers run simultaneously" }
-                    li { "🎯 " strong { "Type Safety: " } "Full compile-time type checking for all composed results" }
-                    li { "🔄 " strong { "Automatic Caching: " } "Each provider maintains its own cache and settings" }
-                    li { "🛠 " strong { "Flexible Composition: " } "Mix and match providers as needed" }
-                    li { "📊 " strong { "Error Handling: " } "Individual provider errors don't break the whole composition" }
-                    li { "🚀 " strong { "Performance: " } "Significantly faster than sequential loading" }
+            div { class: "feature-list",
+                h3 { "💡 Key Benefits of Composable Providers" }
+                ul {
+                    li { "⚡ " span { class: "highlight", "Parallel Execution: " } "All composed providers run simultaneously" }
+                    li { "🎯 " span { class: "highlight", "Type Safety: " } "Full compile-time type checking for all composed results" }
+                    li { "🔄 " span { class: "highlight", "Automatic Caching: " } "Each provider maintains its own cache and settings" }
+                    li { "🛠 " span { class: "highlight", "Flexible Composition: " } "Mix and match providers as needed" }
+                    li { "📊 " span { class: "highlight", "Error Handling: " } "Individual provider errors don't break the whole composition" }
+                    li { "🚀 " span { class: "highlight", "Performance: " } "Significantly faster than sequential loading" }
                 }
             }
         }
+
+        style { {include_str!("./assets/composable_provider_styles.css")} }
     }
 }
 
@@ -278,13 +286,13 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
     let settings_data = use_provider(fetch_user_settings(), user_id);
 
     rsx! {
-        div { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 20px 0;",
+        div { class: "grid",
 
             // User card
-            div { style: "border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fff;",
+            div { class: "card user-section",
                 h4 { "👤 User Data" }
                 match &*user_data.read() {
-                    AsyncState::Loading => rsx! { p { style: "color: #666;", "Loading user..." } },
+                    AsyncState::Loading => rsx! { p { class: "loading", "Loading user..." } },
                     AsyncState::Success(user) => rsx! {
                         div {
                             p { strong { "Name: " } {user.name.clone()} }
@@ -297,10 +305,10 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
             }
 
             // Permissions card
-            div { style: "border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fff;",
+            div { class: "card permissions-section",
                 h4 { "🔐 Permissions" }
                 match &*permissions_data.read() {
-                    AsyncState::Loading => rsx! { p { style: "color: #666;", "Loading permissions..." } },
+                    AsyncState::Loading => rsx! { p { class: "loading", "Loading permissions..." } },
                     AsyncState::Success(perms) => rsx! {
                         div {
                             p { strong { "Role: " } {perms.role.clone()} }
@@ -312,10 +320,10 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
             }
 
             // Settings card
-            div { style: "border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fff;",
+            div { class: "card settings-section",
                 h4 { "⚙️ Settings" }
                 match &*settings_data.read() {
-                    AsyncState::Loading => rsx! { p { style: "color: #666;", "Loading settings..." } },
+                    AsyncState::Loading => rsx! { p { class: "loading", "Loading settings..." } },
                     AsyncState::Success(settings) => rsx! {
                         div {
                             p { strong { "Theme: " } {settings.theme.clone()} }
@@ -332,45 +340,44 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
 
 #[component]
 fn ComposableProviderDemo(user_id: u32) -> Element {
-    let full_profile_data = use_provider(fetch_full_user_profile(), user_id);
+    let profile_data = use_provider(fetch_full_user_profile(), user_id);
 
     rsx! {
-        div { style: "margin: 20px 0;",
-            match &*full_profile_data.read() {
+        div { class: "grid",
+            match &*profile_data.read() {
                 AsyncState::Loading => rsx! {
-                    div { style: "text-align: center; padding: 40px; background: #f8f9fa; border-radius: 8px;",
-                        p { style: "color: #666; font-size: 18px;", "⚡ Loading full profile in parallel..." }
+                    div { class: "loading",
+                        p { "⚡ Loading full profile in parallel..." }
                     }
                 },
                 AsyncState::Success(profile) => rsx! {
-                    div { style: "border: 2px solid #28a745; border-radius: 8px; padding: 20px; background: #f8fff8;",
+                    div { class: "success composition-section",
                         div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;",
                             h3 { style: "color: #28a745; margin: 0;", "✅ Full Profile Loaded" }
-                            span { style: "background: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;",
-                                "⚡ {profile.loading_time_ms}ms"
+                            span { class: "timing-badge",
+                                "Loaded in {profile.load_time_ms}ms"
                             }
                         }
 
-                        div { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;",
-
+                        div { class: "grid",
                             // User section
-                            div { style: "background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #007acc;",
-                                h4 { style: "margin-top: 0; color: #007acc;", "👤 User Info" }
+                            div { class: "card user-section",
+                                h4 { "👤 User Info" }
                                 p { strong { "Name: " } {profile.user.name.clone()} }
                                 p { strong { "Email: " } {profile.user.email.clone()} }
                                 p { strong { "ID: " } {profile.user.id.to_string()} }
                             }
 
                             // Permissions section
-                            div { style: "background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107;",
-                                h4 { style: "margin-top: 0; color: #ffc107;", "🔐 Permissions" }
+                            div { class: "card permissions-section",
+                                h4 { "🔐 Permissions" }
                                 p { strong { "Role: " } {profile.permissions.role.clone()} }
                                 p { strong { "Permissions: " } {profile.permissions.permissions.join(", ")} }
                             }
 
                             // Settings section
-                            div { style: "background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #17a2b8;",
-                                h4 { style: "margin-top: 0; color: #17a2b8;", "⚙️ Settings" }
+                            div { class: "card settings-section",
+                                h4 { "⚙️ Settings" }
                                 p { strong { "Theme: " } {profile.settings.theme.clone()} }
                                 p { strong { "Language: " } {profile.settings.language.clone()} }
                                 p { strong { "Notifications: " } {if profile.settings.notifications_enabled { "Enabled" } else { "Disabled" }} }
@@ -379,11 +386,11 @@ fn ComposableProviderDemo(user_id: u32) -> Element {
                     }
                 },
                 AsyncState::Error(err) => rsx! {
-                    div { style: "border: 2px solid #dc3545; border-radius: 8px; padding: 20px; background: #fff8f8;",
-                        h3 { style: "color: #dc3545; margin-top: 0;", "❌ Failed to Load Profile" }
-                        p { style: "color: #dc3545;", "Error: {err}" }
+                    div { class: "error",
+                        h3 { "❌ Failed to Load Profile" }
+                        p { "Error: {err}" }
                         p { style: "color: #666; font-size: 14px;",
-                            "This happens when any of the composed providers fails. The entire composition fails fast."
+                            "This demonstrates graceful error handling in composed providers."
                         }
                     }
                 }
@@ -394,28 +401,29 @@ fn ComposableProviderDemo(user_id: u32) -> Element {
 
 #[component]
 fn PartialCompositionDemo(user_id: u32) -> Element {
-    let user_with_perms = use_provider(fetch_user_with_permissions(), user_id);
+    let user_with_permissions = use_provider(fetch_user_with_permissions(), user_id);
 
     rsx! {
-        div { style: "margin: 20px 0;",
-            match &*user_with_perms.read() {
+        div { class: "grid",
+            match &*user_with_permissions.read() {
                 AsyncState::Loading => rsx! {
-                    p { style: "color: #666;", "Loading user with permissions..." }
+                    p { class: "loading", "Loading user with permissions..." }
                 },
-                AsyncState::Success((user, permissions)) => rsx! {
-                    div { style: "border: 1px solid #6f42c1; border-radius: 8px; padding: 20px; background: #f8f6ff;",
+                AsyncState::Success(user_perms) => rsx! {
+                    div { class: "card",
                         h3 { style: "color: #6f42c1; margin-top: 0;", "👤🔐 User + Permissions (Partial Composition)" }
 
                         div { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 20px;",
                             div {
-                                h4 { "User Info:" }
-                                p { strong { "Name: " } {user.name.clone()} }
-                                p { strong { "Email: " } {user.email.clone()} }
+                                h4 { "User" }
+                                p { strong { "Name: " } {user_perms.0.name.clone()} }
+                                p { strong { "Email: " } {user_perms.0.email.clone()} }
+                                p { strong { "ID: " } {user_perms.0.id.to_string()} }
                             }
                             div {
-                                h4 { "Permissions:" }
-                                p { strong { "Role: " } {permissions.role.clone()} }
-                                p { strong { "Access: " } {permissions.permissions.join(", ")} }
+                                h4 { "Permissions" }
+                                p { strong { "Role: " } {user_perms.1.role.clone()} }
+                                p { strong { "Permissions: " } {user_perms.1.permissions.join(", ")} }
                             }
                         }
                     }
