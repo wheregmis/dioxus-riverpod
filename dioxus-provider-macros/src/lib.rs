@@ -745,14 +745,14 @@ fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[P
         };
         statements.push(join_stmt);
     } else if params.len() == 1 {
-        // Single parameter - capture it in async blocks
+        // Single parameter - clone it inside each async block
         let param_name = &params[0].name;
         let provider_calls: Vec<_> = compose_providers
             .iter()
             .map(|provider| {
                 quote! {
                     async { 
-                        let param = #param_name; 
+                        let param = #param_name.clone(); 
                         #provider().run(param).await 
                     }
                 }
@@ -766,14 +766,14 @@ fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[P
         };
         statements.push(join_stmt);
     } else {
-        // Multiple parameters - capture them in async blocks
+        // Multiple parameters - clone each parameter inside each async block
         let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
         let provider_calls: Vec<_> = compose_providers
             .iter()
             .map(|provider| {
                 quote! {
                     async { 
-                        let params = (#(#param_names,)*); 
+                        let params = (#(#param_names.clone(),)*); 
                         #provider().run(params).await 
                     }
                 }
