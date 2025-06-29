@@ -41,15 +41,9 @@ impl Provider<u32> for UserProvider {
     }
 }
 
-// Approach 2: Macro-based dependency injection (future enhancement)
-// This syntax would be nice but requires more macro work:
-/*
-#[provider(inject = [ApiClient])]
-async fn fetch_user_with_macro(user_id: u32) -> Result<String, String> {
-    // injected_0 (ApiClient) would be automatically available
-    injected_0.fetch_user(user_id).await
-}
-*/
+// Approach 2: Manual dependency injection works perfectly!
+// Use inject::<Type>() calls directly in provider implementations
+// This is more explicit and easier to understand than macro-based injection
 
 // Approach 3: Multiple dependencies
 #[derive(Clone, Debug)]

@@ -15,15 +15,13 @@ struct ProviderArgs {
     interval: Option<Duration>,
     cache_expiration: Option<Duration>,
     stale_time: Option<Duration>,
-    inject: Vec<syn::Type>, // New: list of types to inject
-    compose: Vec<syn::Ident>, // New: list of provider functions to compose
+    compose: Vec<syn::Ident>, // List of provider functions to compose
 }
 
 /// Attribute arguments for the mutation macro
 #[derive(Default)]
 struct MutationArgs {
     invalidates: Vec<syn::Ident>, // List of provider functions to invalidate
-    inject: Vec<syn::Type>, // List of types to inject
 }
 
 impl Parse for ProviderArgs {
@@ -58,13 +56,6 @@ impl Parse for ProviderArgs {
                         syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
                     })?;
                     args.stale_time = Some(duration);
-                }
-                "inject" => {
-                    // Parse injection types: inject = [Type1, Type2, ...]
-                    let content;
-                    syn::bracketed!(content in input);
-                    let types = content.parse_terminated(syn::Type::parse, Token![,])?;
-                    args.inject = types.into_iter().collect();
                 }
                 "compose" => {
                     // Parse compose list: compose = [provider1, provider2, ...]
@@ -101,13 +92,6 @@ impl Parse for MutationArgs {
                     let providers = content.parse_terminated(syn::Ident::parse, Token![,])?;
                     args.invalidates = providers.into_iter().collect();
                 }
-                "inject" => {
-                    // Parse injection types: inject = [Type1, Type2, ...]
-                    let content;
-                    syn::bracketed!(content in input);
-                    let types = content.parse_terminated(syn::Type::parse, Token![,])?;
-                    args.inject = types.into_iter().collect();
-                }
                 _ => return Err(syn::Error::new_spanned(ident, "Unknown argument")),
             }
 
@@ -120,42 +104,34 @@ impl Parse for MutationArgs {
     }
 }
 
-/// Unified attribute macro for creating providers
-/// Automatically detects provider type based on function parameters:
-/// - No parameters → Future Provider  
-/// - Has parameters → Family Provider
+/// Provider macro for creating cached, composable data providers
 ///
-/// Supports humantime duration syntax for all timing parameters:
-/// - #[provider(interval = "5s")] - refresh every 5 seconds
-/// - #[provider(interval = "1min")] - refresh every minute  
-/// - #[provider(interval = "30sec")] - refresh every 30 seconds
+/// This macro converts an async function into a Provider implementation with
+/// automatic caching, composition, and other advanced features.
 ///
-/// Cache expiration with humantime:
-/// - #[provider(cache_expiration = "30s")] - cache expires after 30 seconds
-/// - #[provider(cache_expiration = "5min")] - cache expires after 5 minutes
-/// - #[provider(cache_expiration = "1h")] - cache expires after 1 hour
+/// # Supported Arguments
+/// - `interval = "30s"` - Background refresh interval
+/// - `cache_expiration = "5min"` - Cache expiration time  
+/// - `stale_time = "1min"` - Time before data is considered stale
+/// - `compose = [provider1, provider2, ...]` - Compose multiple providers in parallel
 ///
-/// Stale-while-revalidate with humantime:
-/// - #[provider(stale_time = "5s")] - serve stale data after 5 seconds, refresh in background
-/// - #[provider(stale_time = "30sec")] - serve stale data after 30 seconds, refresh in background
-/// - #[provider(stale_time = "2min")] - serve stale data after 2 minutes, refresh in background
+/// # Examples
+/// ```rust
+/// #[provider(cache_expiration = "5min")]
+/// async fn fetch_user(id: u32) -> Result<User, String> {
+///     // Implementation
+/// }
 ///
-/// Dependency injection:
-/// - #[provider(inject = [ApiClient, Database])] - automatically inject dependencies
-///
-/// Composable providers:
-/// - #[provider(compose = [fetch_user, fetch_permissions])] - compose multiple providers
-/// - Composed providers run in parallel and their results are available as variables
-/// - Example: fetch_user_result and fetch_permissions_result
-///
-/// Can combine features:
-/// - #[provider(interval = "10s", cache_expiration = "1min")]
-/// - #[provider(stale_time = "5s", cache_expiration = "30s")]
-/// - #[provider(compose = [fetch_user, fetch_settings], inject = [ApiClient])]
-///
-/// Supported humantime formats:
-/// - "5s", "30sec", "2min", "1h", "1day"
-/// - "500ms", "1.5s", "2.5min"
+/// #[provider(compose = [fetch_user, fetch_settings], cache_expiration = "3min")]
+/// async fn fetch_full_profile(user_id: u32) -> Result<FullProfile, String> {
+///     // Composed results automatically available as variables:
+///     // - fetch_user_result: Result<User, String>
+///     // - fetch_settings_result: Result<Settings, String>
+///     let user = fetch_user_result?;
+///     let settings = fetch_settings_result?;
+///     Ok(FullProfile { user, settings })
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
     let provider_args = if args.is_empty() {
@@ -177,35 +153,20 @@ pub fn provider(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 }
 
-/// Attribute macro for creating mutations
+/// Mutation macro for creating data mutations with cache invalidation
 ///
-/// Mutations are operations that modify data and can invalidate provider caches.
-/// They support dependency injection and automatic cache invalidation.
+/// This macro converts an async function into a Mutation implementation that can
+/// invalidate related provider caches when executed.
 ///
-/// ## Examples
+/// # Supported Arguments
+/// - `invalidates = [provider1, provider2, ...]` - Providers to invalidate after mutation
 ///
-/// Basic mutation:
+/// # Example
 /// ```rust
-/// #[mutation]
-/// async fn create_user(data: UserData) -> Result<User, String> {
-///     api_client.create_user(data).await
-/// }
-/// ```
-///
-/// Mutation with cache invalidation:
-/// ```rust
-/// #[mutation(invalidates = [fetch_users, fetch_user_stats])]
-/// async fn update_user(user_id: u32, data: UserData) -> Result<User, String> {
-///     api_client.update_user(user_id, data).await
-/// }
-/// ```
-///
-/// Mutation with dependency injection:
-/// ```rust
-/// #[mutation(inject = [ApiClient, Logger], invalidates = [fetch_user])]
-/// async fn delete_user(user_id: u32) -> Result<(), String> {
-///     // ApiClient and Logger are automatically injected
-///     api_client.delete_user(user_id).await
+/// #[mutation(invalidates = [fetch_user, fetch_user_list])]
+/// async fn update_user(user: User) -> Result<User, String> {
+///     // Update user implementation
+///     // Will automatically invalidate fetch_user and fetch_user_list caches
 /// }
 /// ```
 #[proc_macro_attribute]
@@ -245,7 +206,8 @@ fn generate_provider(input_fn: ItemFn, provider_args: ProviderArgs) -> Result<To
     let params = extract_all_params(&input_fn)?;
 
     // Generate enhanced function body with dependency injection and composition
-    let enhanced_fn_block = generate_enhanced_function_body(&provider_args.inject, &provider_args.compose, &params, fn_block);
+    let enhanced_fn_block =
+        generate_enhanced_function_body(&provider_args.compose, &params, fn_block);
 
     // Generate interval and cache expiration implementations
     let interval_impl = generate_interval_impl(&provider_args);
@@ -353,7 +315,7 @@ fn generate_mutation(input_fn: ItemFn, mutation_args: MutationArgs) -> Result<To
     } = &info;
 
     // Generate enhanced function body with dependency injection and composition
-    let enhanced_fn_block = generate_enhanced_function_body(&mutation_args.inject, &[], &[], fn_block);
+    let enhanced_fn_block = generate_enhanced_function_body(&[], &[], fn_block);
 
     // Generate invalidation implementation
     let invalidation_impl = generate_invalidation_impl(&mutation_args);
@@ -481,7 +443,8 @@ fn generate_invalidation_impl(mutation_args: &MutationArgs) -> TokenStream2 {
     if mutation_args.invalidates.is_empty() {
         quote! {}
     } else {
-        let provider_calls: Vec<_> = mutation_args.invalidates
+        let provider_calls: Vec<_> = mutation_args
+            .invalidates
             .iter()
             .map(|provider_fn| {
                 quote! {
@@ -663,44 +626,23 @@ fn to_pascal_case(s: &str) -> String {
     result
 }
 
-/// Generate enhanced function body with dependency injection and composition
+/// Generate enhanced function body with composition
 fn generate_enhanced_function_body(
-    inject_types: &[syn::Type], 
     compose_providers: &[syn::Ident],
     params: &[ParamInfo],
-    original_block: &syn::Block
+    original_block: &syn::Block,
 ) -> syn::Block {
     let mut statements = Vec::new();
-    
-    // Add dependency injection statements
-    if !inject_types.is_empty() {
-        let injection_stmts: Vec<_> = inject_types
-            .iter()
-            .map(|ty| {
-                let var_name = syn::Ident::new(
-                    &format!("injected_{}", to_pascal_case(&quote!(#ty).to_string().to_lowercase())),
-                    proc_macro2::Span::call_site(),
-                );
-                
-                syn::parse_quote! {
-                    let #var_name = ::dioxus_provider::injection::inject::<#ty>()
-                        .map_err(|e| format!("Dependency injection failed for {}: {}", stringify!(#ty), e))?;
-                }
-            })
-            .collect();
-        
-        statements.extend(injection_stmts);
-    }
-    
+
     // Add composition statements
     if !compose_providers.is_empty() {
         let composition_statements = generate_composition_statements(compose_providers, params);
         statements.extend(composition_statements);
     }
-    
+
     // Add original function body statements
     statements.extend(original_block.stmts.clone());
-    
+
     syn::Block {
         brace_token: original_block.brace_token,
         stmts: statements,
@@ -708,7 +650,10 @@ fn generate_enhanced_function_body(
 }
 
 /// Generate composition statements that can be directly added to a statement list
-fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[ParamInfo]) -> Vec<syn::Stmt> {
+fn generate_composition_statements(
+    compose_providers: &[syn::Ident],
+    params: &[ParamInfo],
+) -> Vec<syn::Stmt> {
     if compose_providers.is_empty() {
         return vec![];
     }
@@ -751,9 +696,9 @@ fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[P
             .iter()
             .map(|provider| {
                 quote! {
-                    async { 
-                        let param = #param_name.clone(); 
-                        #provider().run(param).await 
+                    async {
+                        let param = #param_name.clone();
+                        #provider().run(param).await
                     }
                 }
             })
@@ -772,9 +717,9 @@ fn generate_composition_statements(compose_providers: &[syn::Ident], params: &[P
             .iter()
             .map(|provider| {
                 quote! {
-                    async { 
-                        let params = (#(#param_names.clone(),)*); 
-                        #provider().run(params).await 
+                    async {
+                        let params = (#(#param_names.clone(),)*);
+                        #provider().run(params).await
                     }
                 }
             })
