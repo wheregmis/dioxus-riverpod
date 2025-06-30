@@ -1,6 +1,5 @@
 [workspace]
 git_release_enable = false
-
 git_release_body = """
 {{ changelog }}
 {% if remote.contributors %}
@@ -11,13 +10,30 @@ git_release_body = """
 {% endif %}
 """
 
+[changelog]
+protect_breaking_commits = true
+commit_parsers = [
+    { message = "^.*\\(security\\)", group = "<!-- 0 -->Security", scope = "" },
+    { message = "^feat", group = "<!-- 1 -->New features" },
+    { message = "^fix", group = "<!-- 2 -->Fixes" },
+    { message = "^.*", group = "<!-- 3 -->Other" },
+]
+commit_preprocessors = [
+    # Replace multiple spaces with a single space.
+    { pattern = "  +", replace = " " },
+    # Replace the issue/PR number with the link. It will work for PRs as well as GitHub has a redirect.
+    { pattern = "\\(#([0-9]+)\\)", replace = "([#${1}](https://github.com/wheregmis/dioxus-provider/pull//${1}))" },
+    # Hyperlink bare commit hashes like "abcd1234" in commit logs, with short commit hash as description.
+    { pattern = "([ \\n])(([a-f0-9]{7})[a-f0-9]*)", replace = "${1}commit [${3}](https://github.com/wheregmis/dioxus-provider/commit/${2})" },
+]
+
 [[package]]
 name = "dioxus-provider"
+changelog_update = true
 changelog_path = "./CHANGELOG.md"
 git_release_enable = true
 
 [[package]]
 name = "dioxus-provider-macros"
-changelog_include = []
-changelog_path = "./CHANGELOG.md"
+changelog_update = true
 git_release_enable = true
