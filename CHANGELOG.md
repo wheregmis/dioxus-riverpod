@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.3...dioxus-provider-v0.0.4) - 2025-06-30
+
+### Other
+
+- Create FUNDING.yml
+- Prefix composed provider result variables for uniqueness
+- Update README with new features and examples
+- Remove macro-based dependency injection support
+- Refactor composable provider demo for CSS and structure
+- Switch from tokio to futures join and platform-specific sleep
+- Add composable provider support and demo example
+- Update dependencies and refactor error handling in dependency injection
+- Unify provider parameter handling with IntoProviderParam
+
+## [0.1.2](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-macros-v0.1.1...dioxus-provider-macros-v0.1.2) - 2025-06-30
+
+### Other
+
+- Prefix composed provider result variables for uniqueness
+- Add validation for provider composition requirements
+- Remove macro-based dependency injection support
+- Clone parameters in async blocks for provider composition
+- Switch from tokio to futures join and platform-specific sleep
+- Add composable provider support and demo example
+- Update dependencies and refactor error handling in dependency injection
+
 ## [0.0.3](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.2...dioxus-provider-v0.0.3) - 2025-06-24
 
 ### Other
