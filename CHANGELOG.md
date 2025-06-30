@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.3...dioxus-provider-v0.0.4) - 2025-06-30
+
+### <!-- 3 -->Other
+
+- Add Dependabot config and enhance release-plz settings
+- Create FUNDING.yml
+- Prefix composed provider result variables for uniqueness
+- Update README with new features and examples
+- Remove macro-based dependency injection support
+- Refactor composable provider demo for CSS and structure
+- Switch from tokio to futures join and platform-specific sleep
+- Add composable provider support and demo example
+- Update dependencies and refactor error handling in dependency injection
+- Unify provider parameter handling with IntoProviderParam
+
 ## [0.0.3](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.2...dioxus-provider-v0.0.3) - 2025-06-24
 
 ### Other
