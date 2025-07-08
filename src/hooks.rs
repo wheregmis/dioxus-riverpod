@@ -81,7 +81,7 @@ where
     /// The type of data returned on success
     type Output: Clone + PartialEq + Send + Sync + 'static;
     /// The type of error returned on failure  
-    type Error: Clone + Send + Sync + 'static;
+    type Error: Clone + PartialEq + Send + Sync + 'static;
 
     /// Execute the async operation
     ///
