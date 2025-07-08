@@ -455,14 +455,14 @@ where
 
         spawn(async move {
             let result = provider.run(param).await;
-            cache_clone.set(cache_key_clone.clone(), result.clone());
-
-            // Access tracking is automatically handled when data is stored and accessed
-            debug!("📊 [CACHE-STORE] Stored new data for: {}", cache_key_clone);
-
-            match result {
-                Ok(data) => state_for_async.set(AsyncState::Success(data)),
-                Err(error) => state_for_async.set(AsyncState::Error(error)),
+            let updated = cache_clone.set(cache_key_clone.clone(), result.clone());
+            debug!("📊 [CACHE-STORE] Attempted to store new data for: {} (updated: {})", cache_key_clone, updated);
+            if updated {
+                // Only update state and trigger rerender if value changed
+                match result {
+                    Ok(data) => state_for_async.set(AsyncState::Success(data)),
+                    Err(error) => state_for_async.set(AsyncState::Error(error)),
+                }
             }
         });
     }));
@@ -506,15 +506,20 @@ fn check_and_handle_swr_core<P, Param>(
 
                         spawn(async move {
                             let result = provider.run(param).await;
-                            cache.set(cache_key_clone.clone(), result);
-
-                            // Mark revalidation as complete and trigger refresh
+                            let updated = cache.set(cache_key_clone.clone(), result);
                             refresh_registry_clone.complete_revalidation(&cache_key_clone);
-                            refresh_registry_clone.trigger_refresh(&cache_key_clone);
-                            debug!(
-                                "✅ [SWR] Background revalidation completed for key: {}",
-                                cache_key_clone
-                            );
+                            if updated {
+                                refresh_registry_clone.trigger_refresh(&cache_key_clone);
+                                debug!(
+                                    "✅ [SWR] Background revalidation completed for key: {} (value changed)",
+                                    cache_key_clone
+                                );
+                            } else {
+                                debug!(
+                                    "✅ [SWR] Background revalidation completed for key: {} (value unchanged)",
+                                    cache_key_clone
+                                );
+                            }
                         });
                     }
                 }
@@ -551,10 +556,11 @@ fn setup_interval_task_core<P, Param>(
 
             spawn(async move {
                 let result = provider_for_task.run(param_for_task).await;
-                cache_for_task.set(cache_key_for_task.clone(), result);
-
-                // Trigger refresh to mark reactive contexts as dirty and update UI
-                refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
+                let updated = cache_for_task.set(cache_key_for_task.clone(), result);
+                // Only trigger refresh if value changed
+                if updated {
+                    refresh_registry_for_task.trigger_refresh(&cache_key_for_task);
+                }
             });
         });
     }

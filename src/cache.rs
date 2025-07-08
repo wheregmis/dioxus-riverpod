@@ -248,10 +248,9 @@ impl ProviderCache {
         Some((data, is_stale))
     }
 
-    /// Set a cached result by key
-    pub fn set<T: Clone + Send + Sync + PartialEq + 'static>(&self, key: String, value: T) {
+    /// Returns true if the value was updated, false if unchanged
+    pub fn set<T: Clone + Send + Sync + PartialEq + 'static>(&self, key: String, value: T) -> bool {
         if let Ok(mut cache) = self.cache.lock() {
-            // Check if the value is already cached and equal
             if let Some(existing_entry) = cache.get_mut(&key) {
                 if let Some(existing_value) = existing_entry.get::<T>() {
                     if existing_value == value {
@@ -260,13 +259,15 @@ impl ProviderCache {
                             "⏸️ [CACHE-STORE] Value unchanged for key: {}, refreshing timestamp",
                             key
                         );
-                        return;
+                        return false;
                     }
                 }
             }
             cache.insert(key.clone(), CacheEntry::new(value));
             debug!("📊 [CACHE-STORE] Stored data for key: {}", key);
+            return true;
         }
+        false
     }
 
     /// Remove a cached result by key
