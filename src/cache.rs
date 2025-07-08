@@ -67,7 +67,7 @@ impl<T, E> AsyncState<T, E> {
 #[derive(Clone)]
 pub struct CacheEntry {
     data: Arc<dyn Any + Send + Sync>,
-    cached_at: Instant,
+    cached_at: Arc<Mutex<Instant>>,
     reference_count: Arc<AtomicU32>,
     last_accessed: Arc<Mutex<Instant>>,
     access_count: Arc<AtomicU32>,
@@ -78,7 +78,7 @@ impl CacheEntry {
         let now = Instant::now();
         Self {
             data: Arc::new(data),
-            cached_at: now,
+            cached_at: Arc::new(Mutex::new(now)),
             reference_count: Arc::new(AtomicU32::new(0)),
             last_accessed: Arc::new(Mutex::new(now)),
             access_count: Arc::new(AtomicU32::new(0)),
@@ -94,12 +94,27 @@ impl CacheEntry {
         self.data.downcast_ref::<T>().cloned()
     }
 
+    /// Refresh the cached_at timestamp to now
+    pub fn refresh_timestamp(&self) {
+        if let Ok(mut cached_at) = self.cached_at.lock() {
+            *cached_at = Instant::now();
+        }
+    }
+
     pub fn is_expired(&self, expiration: Duration) -> bool {
-        self.cached_at.elapsed() > expiration
+        if let Ok(cached_at) = self.cached_at.lock() {
+            cached_at.elapsed() > expiration
+        } else {
+            false
+        }
     }
 
     pub fn is_stale(&self, stale_time: Duration) -> bool {
-        self.cached_at.elapsed() > stale_time
+        if let Ok(cached_at) = self.cached_at.lock() {
+            cached_at.elapsed() > stale_time
+        } else {
+            false
+        }
     }
 
     /// Increment reference count when a provider hook starts using this entry
@@ -142,7 +157,11 @@ impl CacheEntry {
 
     /// Get the age of this entry
     pub fn age(&self) -> Duration {
-        self.cached_at.elapsed()
+        if let Ok(cached_at) = self.cached_at.lock() {
+            cached_at.elapsed()
+        } else {
+            Duration::from_secs(0)
+        }
     }
 }
 
@@ -233,11 +252,12 @@ impl ProviderCache {
     pub fn set<T: Clone + Send + Sync + PartialEq + 'static>(&self, key: String, value: T) {
         if let Ok(mut cache) = self.cache.lock() {
             // Check if the value is already cached and equal
-            if let Some(existing_entry) = cache.get(&key) {
+            if let Some(existing_entry) = cache.get_mut(&key) {
                 if let Some(existing_value) = existing_entry.get::<T>() {
                     if existing_value == value {
+                        existing_entry.refresh_timestamp();
                         debug!(
-                            "⏸️ [CACHE-STORE] Value unchanged for key: {}, skipping update",
+                            "⏸️ [CACHE-STORE] Value unchanged for key: {}, refreshing timestamp",
                             key
                         );
                         return;
