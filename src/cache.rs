@@ -230,20 +230,8 @@ impl ProviderCache {
     }
 
     /// Set a cached result by key
-    pub fn set<T: Clone + Send + Sync + PartialEq + 'static>(&self, key: String, value: T) {
+    pub fn set<T: Clone + Send + Sync + 'static>(&self, key: String, value: T) {
         if let Ok(mut cache) = self.cache.lock() {
-            // Check if the value is already cached and equal
-            if let Some(existing_entry) = cache.get(&key) {
-                if let Some(existing_value) = existing_entry.get::<T>() {
-                    if existing_value == value {
-                        debug!(
-                            "⏸️ [CACHE-STORE] Value unchanged for key: {}, skipping update",
-                            key
-                        );
-                        return;
-                    }
-                }
-            }
             cache.insert(key.clone(), CacheEntry::new(value));
             debug!("📊 [CACHE-STORE] Stored data for key: {}", key);
         }
