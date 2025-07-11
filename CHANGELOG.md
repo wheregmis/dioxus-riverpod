@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.5](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.4...dioxus-provider-v0.0.5) - 2025-07-08
+
+### <!-- 3 -->Other
+
+- Optimize cache set to avoid unnecessary updates
+- Make CacheEntry cached_at field thread-safe
+- Reapply "Avoid redundant cache updates for unchanged values"
+
 ## [0.0.4](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.3...dioxus-provider-v0.0.4) - 2025-06-30
 
 ### <!-- 3 -->Other
