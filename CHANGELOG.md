@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `ProviderState` now supports combinator methods: `map`, `map_err`, and `and_then` for ergonomic state transformations in provider logic and UI code.
+- Expanded documentation for all cache and provider state APIs.
+
 ## [0.0.6](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.5...dioxus-provider-v0.0.6) - 2025-07-12
 
 ### <!-- 3 -->Other
@@ -80,13 +84,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `use_provider` hook for consuming provider data
 - `use_invalidate_provider` hook for manual cache invalidation
 - `use_clear_provider_cache` hook for clearing entire cache
-- `init_global_providers()` function for application initialization
-- Support for async functions with automatic error handling
-- Automatic re-rendering when data changes
-- Comprehensive examples demonstrating all features
-
-### Documentation
-- Complete API documentation with examples
-- Comprehensive README with getting started guide
-- Multiple example applications demonstrating different use cases
-- Cross-platform compatibility documentation
+- `

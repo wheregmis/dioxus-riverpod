@@ -303,6 +303,19 @@ let clear_cache = use_clear_provider_cache();
 clear_cache();
 ```
 
+## ProviderState Combinators
+
+`ProviderState` now supports combinator methods for ergonomic state transformations:
+
+```rust
+let state: ProviderState<u32, String> = ProviderState::Success(42);
+let mapped = state.map(|v| v.to_string()); // ProviderState<String, String>
+let mapped_err = state.map_err(|e| format!("error: {e}"));
+let chained = state.and_then(|v| if v > 0 { ProviderState::Success(v * 2) } else { ProviderState::Error("zero".into()) });
+```
+
+See the API docs for more details.
+
 ## Running The Examples
 
 The `examples` directory contains comprehensive demos covering all library features.

@@ -3,7 +3,7 @@
 use dioxus_lib::prelude::Task;
 
 /// Represents the state of an async operation
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum ProviderState<T, E> {
     /// The operation is currently loading
     Loading { task: Task },
@@ -42,6 +42,42 @@ impl<T, E> ProviderState<T, E> {
         match self {
             ProviderState::Error(error) => Some(error),
             _ => None,
+        }
+    }
+
+    /// Maps a ProviderState<T, E> to ProviderState<U, E> by applying a function to the contained data if successful.
+    pub fn map<U, F>(self, op: F) -> ProviderState<U, E>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            ProviderState::Success(data) => ProviderState::Success(op(data)),
+            ProviderState::Error(e) => ProviderState::Error(e),
+            ProviderState::Loading { task } => ProviderState::Loading { task },
+        }
+    }
+
+    /// Maps a ProviderState<T, E> to ProviderState<T, F> by applying a function to the contained error if failed.
+    pub fn map_err<F, O>(self, op: O) -> ProviderState<T, F>
+    where
+        O: FnOnce(E) -> F,
+    {
+        match self {
+            ProviderState::Success(data) => ProviderState::Success(data),
+            ProviderState::Error(e) => ProviderState::Error(op(e)),
+            ProviderState::Loading { task } => ProviderState::Loading { task },
+        }
+    }
+
+    /// Chains a ProviderState<T, E> to ProviderState<U, E> by applying a function to the contained data if successful.
+    pub fn and_then<U, F>(self, op: F) -> ProviderState<U, E>
+    where
+        F: FnOnce(T) -> ProviderState<U, E>,
+    {
+        match self {
+            ProviderState::Success(data) => op(data),
+            ProviderState::Error(e) => ProviderState::Error(e),
+            ProviderState::Loading { task } => ProviderState::Loading { task },
         }
     }
 }
