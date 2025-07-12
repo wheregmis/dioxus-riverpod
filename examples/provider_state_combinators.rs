@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_provider::hooks::ProviderState;
+use dioxus_provider::platform::sleep;
 use dioxus_provider::prelude::*;
 use std::time::Duration;
 
@@ -7,7 +8,7 @@ use std::time::Duration;
 #[provider]
 async fn fetch_user_age(user_id: u32) -> Result<u32, String> {
     // Simulate network delay
-    tokio::time::sleep(Duration::from_millis(800)).await;
+    sleep(Duration::from_millis(800)).await;
     if user_id == 0 {
         Err("User not found".to_string())
     } else {
