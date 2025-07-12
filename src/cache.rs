@@ -35,8 +35,6 @@ use std::time::Instant;
 #[cfg(target_family = "wasm")]
 use web_time::Instant;
 
-use dioxus_lib::prelude::Task;
-
 /// A type-erased cache entry for storing provider results with timestamp and reference counting
 #[derive(Clone)]
 pub struct CacheEntry {
