@@ -46,7 +46,7 @@ pub mod time {
         let diff = now.saturating_sub(timestamp);
 
         if diff < 60 {
-            format!("{}s ago", diff)
+            format!("{diff}s ago")
         } else if diff < 3600 {
             format!("{}m ago", diff / 60)
         } else {

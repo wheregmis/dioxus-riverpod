@@ -28,7 +28,7 @@
 
 use dioxus_lib::prelude::SuspendedFuture;
 use dioxus_lib::prelude::*;
-use std::{fmt::Debug, future::Future, hash::Hash, time::Duration};
+use std::{fmt::Debug, future::Future, time::Duration};
 use tracing::debug;
 
 use crate::{
@@ -673,7 +673,7 @@ fn setup_intelligent_cache_management<P, Param>(
 
         let cache_clone = cache.clone();
         let unused_threshold = cache_expiration * 2; // Remove entries unused for 2x expiration time
-        let cleanup_key = format!("{}_cleanup", cache_key);
+        let cleanup_key = format!("{cache_key}_cleanup");
 
         refresh_registry.start_periodic_task(
             &cleanup_key,

@@ -162,13 +162,13 @@ impl RefreshRegistry {
         F: Fn() + Send + 'static,
     {
         if let Ok(mut tasks) = self.periodic_tasks.lock() {
-            let task_key = format!("{}:{:?}", key, task_type);
+            let task_key = format!("{key}:{task_type:?}");
 
             // For certain task types, don't create multiple tasks for the same provider
             if (task_type == TaskType::StaleCheck || task_type == TaskType::CacheExpiration)
                 && tasks
                     .iter()
-                    .any(|(k, (t, _, _))| k.starts_with(&format!("{}:", key)) && *t == task_type)
+                    .any(|(k, (t, _, _))| k.starts_with(&format!("{key}:")) && *t == task_type)
             {
                 return;
             }
@@ -241,7 +241,7 @@ impl RefreshRegistry {
     /// iteration and then stop.
     pub fn stop_periodic_task(&self, key: &str, task_type: TaskType) {
         if let Ok(mut tasks) = self.periodic_tasks.lock() {
-            let task_key = format!("{}:{:?}", key, task_type);
+            let task_key = format!("{key}:{task_type:?}");
             tasks.remove(&task_key);
         }
     }

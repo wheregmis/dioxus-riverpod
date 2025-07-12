@@ -24,7 +24,7 @@ impl IntoProviderParam for () {
     type Param = ();
 
     fn into_param(self) -> Self::Param {
-        ()
+        // nothing needed
     }
 }
 

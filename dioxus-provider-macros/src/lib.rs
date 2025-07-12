@@ -37,7 +37,7 @@ impl Parse for ProviderArgs {
                     let lit: LitStr = input.parse()?;
                     let duration_str = lit.value();
                     let duration = humantime::parse_duration(&duration_str).map_err(|e| {
-                        syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
+                        syn::Error::new_spanned(lit, format!("Invalid duration format: {e}"))
                     })?;
                     args.interval = Some(duration);
                 }
@@ -45,7 +45,7 @@ impl Parse for ProviderArgs {
                     let lit: LitStr = input.parse()?;
                     let duration_str = lit.value();
                     let duration = humantime::parse_duration(&duration_str).map_err(|e| {
-                        syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
+                        syn::Error::new_spanned(lit, format!("Invalid duration format: {e}"))
                     })?;
                     args.cache_expiration = Some(duration);
                 }
@@ -53,7 +53,7 @@ impl Parse for ProviderArgs {
                     let lit: LitStr = input.parse()?;
                     let duration_str = lit.value();
                     let duration = humantime::parse_duration(&duration_str).map_err(|e| {
-                        syn::Error::new_spanned(lit, format!("Invalid duration format: {}", e))
+                        syn::Error::new_spanned(lit, format!("Invalid duration format: {e}"))
                     })?;
                     args.stale_time = Some(duration);
                 }
@@ -776,7 +776,7 @@ fn generate_composition_statements(
         .iter()
         .map(|provider| {
             syn::Ident::new(
-                &format!("__dioxus_composed_{}_result", provider.to_string()),
+                &format!("__dioxus_composed_{provider}_result"),
                 proc_macro2::Span::call_site(),
             )
         })
