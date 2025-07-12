@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.0.6](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.5...dioxus-provider-v0.0.6) - 2025-07-12
+
+### <!-- 3 -->Other
+
+- Rename AsyncState to ProviderState throughout codebase
+- Support for Suspense
 ### Breaking Change
 - `AsyncState` has been renamed to `ProviderState` for clarity and consistency with the library's naming. The loading state is now `ProviderState::Loading { task: Task }`. All pattern matches must use `ProviderState::Loading { .. }` instead of `AsyncState::Loading`. This affects all provider and consumer code that matches on loading state.
 
