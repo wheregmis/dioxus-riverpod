@@ -1,3 +1,19 @@
+//! # Cache Management for dioxus-provider
+//!
+//! This module implements a global, type-erased cache for provider results, supporting:
+//! - **Expiration**: Entries are removed after a configurable TTL.
+//! - **Staleness (SWR)**: Entries can be marked stale and revalidated in the background.
+//! - **LRU Eviction**: Least-recently-used entries are evicted to maintain a size limit.
+//! - **Reference Counting**: Tracks active users of each entry for safe cleanup.
+//! - **Access/Usage Stats**: Provides statistics for cache introspection and tuning.
+//!
+//! ## Example
+//! ```rust,no_run
+//! use dioxus_provider::cache::ProviderCache;
+//! let cache = ProviderCache::new();
+//! cache.set("my_key".to_string(), 42);
+//! let value: Option<i32> = cache.get("my_key");
+//! ```
 //! Cache management and async state types for dioxus-provider
 
 use std::{
