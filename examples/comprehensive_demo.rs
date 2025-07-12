@@ -16,6 +16,7 @@
 //! - Performance monitoring
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::{global::init_global_providers, prelude::*};
 use std::{
     sync::atomic::{AtomicU32, Ordering},

@@ -4,6 +4,7 @@
 //! expires, components immediately show loading state and then fetch fresh data.
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::{global::init_global_providers, prelude::*};
 use std::time::Duration;
 

@@ -3,6 +3,7 @@
 //! This example demonstrates the new structured error handling capabilities
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::prelude::*;
 use std::time::Duration;
 

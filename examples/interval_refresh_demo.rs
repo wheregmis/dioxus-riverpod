@@ -12,6 +12,7 @@
 //! - Cache integration with interval refresh
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::prelude::*;
 use std::{
     sync::atomic::{AtomicU32, Ordering},

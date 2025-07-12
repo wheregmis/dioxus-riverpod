@@ -20,6 +20,7 @@
 //! - Global provider management
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::prelude::*;
 use std::{
     sync::atomic::{AtomicU32, Ordering},

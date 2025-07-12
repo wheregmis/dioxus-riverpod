@@ -7,6 +7,7 @@
 #![allow(dead_code)]
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::prelude::*;
 
 // Example dependencies that don't implement PartialEq/Hash

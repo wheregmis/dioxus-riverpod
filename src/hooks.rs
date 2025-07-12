@@ -32,10 +32,13 @@ use std::{fmt::Debug, future::Future, hash::Hash, time::Duration};
 use tracing::debug;
 
 use crate::{
-    cache::{ProviderCache, ProviderState},
+    cache::ProviderCache,
     global::{get_global_cache, get_global_refresh_registry},
+    // provider_state::ProviderState, // REMOVE THIS LINE
     refresh::{RefreshRegistry, TaskType},
 };
+
+pub use crate::provider_state::ProviderState;
 
 /// A unified trait for defining providers - async operations that return data
 ///
