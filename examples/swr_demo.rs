@@ -238,23 +238,23 @@ fn SWRDataDisplay<
     T: 'static + Clone + PartialEq,
     E: 'static + Clone + PartialEq + std::fmt::Display,
 >(
-    data: Signal<AsyncState<T, E>>,
+    data: Signal<ProviderState<T, E>>,
     render_success: fn(&T) -> Element,
 ) -> Element {
     match &*data.read() {
-        AsyncState::Loading => rsx! {
+        ProviderState::Loading { .. } => rsx! {
             div { class: "loading-container",
                 div { class: "loading-spinner" }
                 span { "Fetching fresh data..." }
             }
         },
-        AsyncState::Error(e) => rsx! {
+        ProviderState::Error(e) => rsx! {
             div { class: "error-container",
                 span { class: "error-icon", "❌" }
                 span { class: "error-message", "Error: {e}" }
             }
         },
-        AsyncState::Success(value) => render_success(value),
+        ProviderState::Success(value) => render_success(value),
     }
 }
 

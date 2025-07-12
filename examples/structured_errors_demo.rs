@@ -144,10 +144,10 @@ fn UserProfile(user_id: u32) -> Element {
             }
 
             match &*user_data.read() {
-                AsyncState::Loading => rsx! {
+                ProviderState::Loading { .. } => rsx! {
                     div { class: "text-blue-500", "Loading user..." }
                 },
-                AsyncState::Success(user) => rsx! {
+                ProviderState::Success(user) => rsx! {
                     div { class: "bg-white rounded-lg shadow p-6",
                         h2 { class: "text-xl font-semibold mb-4", "User Information" }
                         p { "Name: {user.name}" }
@@ -155,7 +155,7 @@ fn UserProfile(user_id: u32) -> Element {
                         p { "Status: {user.status:?}" }
                     }
                 },
-                AsyncState::Error(error) => rsx! {
+                ProviderState::Error(error) => rsx! {
                     div { class: "bg-red-50 border border-red-200 rounded p-4",
                         h3 { class: "text-red-800 font-medium", "Error" }
                         p { class: "text-red-700", "{error}" }

@@ -97,7 +97,7 @@ async fn get_server_message() -> Result<String, String> {
 
 Use the `use_provider` hook to read data from a provider. Dioxus will automatically re-render your component when the data changes (e.g., when the `async` function completes).
 
-The hook returns a `Signal<AsyncState<T, E>>`, which can be in one of three states: `Loading`, `Success(T)`, or `Error(E)`.
+The hook returns a `Signal<ProviderState<T, E>>`, which can be in one of three states: `Loading`, `Success(T)`, or `Error(E)`.
 
 ```rust,no_run
 use dioxus::prelude::*;
@@ -113,9 +113,9 @@ fn App() -> Element {
             h1 { "Dioxus Provider Demo" }
             // Pattern match on the state to render UI
             match &*message.read() {
-                AsyncState::Loading => rsx! { div { "Loading..." } },
-                AsyncState::Success(data) => rsx! { div { "Server says: {data}" } },
-                AsyncState::Error(err) => rsx! { div { "Error: {err}" } },
+                ProviderState::Loading { .. } => rsx! { div { "Loading..." } },
+                ProviderState::Success(data) => rsx! { div { "Server says: {data}" } },
+                ProviderState::Error(err) => rsx! { div { "Error: {err}" } },
             }
         }
     }
@@ -239,7 +239,7 @@ fn UserProfile(user_id: u32) -> Element {
     let user = use_provider(fetch_user(), (user_id,));
 
     match &*user.read() {
-        AsyncState::Success(data) => rsx!{ div { "{data}" } },
+        ProviderState::Success(data) => rsx!{ div { "{data}" } },
         // ... other states
         _ => rsx!{ div { "Loading user..." } }
     }
@@ -398,7 +398,7 @@ fn AnimatedUserCard(user_id: u32) -> Element {
     let scale = use_motion(1.0f32);
     
     match &*user_data.read() {
-        AsyncState::Success(user) => rsx! {
+        ProviderState::Success(user) => rsx! {
             div {
                 style: "transform: scale({scale.get_value()})",
                 onclick: move |_| {

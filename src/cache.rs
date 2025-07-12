@@ -19,37 +19,39 @@ use std::time::Instant;
 #[cfg(target_family = "wasm")]
 use web_time::Instant;
 
+use dioxus_lib::prelude::Task;
+
 /// Represents the state of an async operation
 #[derive(Clone, PartialEq)]
-pub enum AsyncState<T, E> {
+pub enum ProviderState<T, E> {
     /// The operation is currently loading
-    Loading,
+    Loading { task: Task },
     /// The operation completed successfully with data
     Success(T),
     /// The operation failed with an error
     Error(E),
 }
 
-impl<T, E> AsyncState<T, E> {
+impl<T, E> ProviderState<T, E> {
     /// Returns true if the state is currently loading
     pub fn is_loading(&self) -> bool {
-        matches!(self, AsyncState::Loading)
+        matches!(self, ProviderState::Loading { task: _ })
     }
 
     /// Returns true if the state contains successful data
     pub fn is_success(&self) -> bool {
-        matches!(self, AsyncState::Success(_))
+        matches!(self, ProviderState::Success(_))
     }
 
     /// Returns true if the state contains an error
     pub fn is_error(&self) -> bool {
-        matches!(self, AsyncState::Error(_))
+        matches!(self, ProviderState::Error(_))
     }
 
     /// Returns the data if successful, None otherwise
     pub fn data(&self) -> Option<&T> {
         match self {
-            AsyncState::Success(data) => Some(data),
+            ProviderState::Success(data) => Some(data),
             _ => None,
         }
     }
@@ -57,7 +59,7 @@ impl<T, E> AsyncState<T, E> {
     /// Returns the error if failed, None otherwise
     pub fn error(&self) -> Option<&E> {
         match self {
-            AsyncState::Error(error) => Some(error),
+            ProviderState::Error(error) => Some(error),
             _ => None,
         }
     }
