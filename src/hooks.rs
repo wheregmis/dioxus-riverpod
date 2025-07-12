@@ -39,6 +39,7 @@ use crate::{
 };
 
 use crate::param_utils::IntoProviderParam;
+use crate::types::{ProviderErrorBounds, ProviderOutputBounds, ProviderParamBounds};
 
 pub use crate::provider_state::ProviderState;
 
@@ -82,12 +83,12 @@ pub use crate::provider_state::ProviderState;
 /// ```
 pub trait Provider<Param = ()>: Clone + PartialEq + 'static
 where
-    Param: Clone + PartialEq + Hash + Debug + 'static,
+    Param: ProviderParamBounds,
 {
     /// The type of data returned on success
-    type Output: Clone + PartialEq + Send + Sync + 'static;
+    type Output: ProviderOutputBounds;
     /// The type of error returned on failure
-    type Error: Clone + PartialEq + Send + Sync + 'static;
+    type Error: ProviderErrorBounds;
 
     /// Execute the async operation
     ///
@@ -270,7 +271,7 @@ pub fn use_provider_cache() -> ProviderCache {
 pub fn use_invalidate_provider<P, Param>(provider: P, param: Param) -> impl Fn() + Clone
 where
     P: Provider<Param>,
-    Param: Clone + PartialEq + Hash + Debug + 'static,
+    Param: ProviderParamBounds,
 {
     let cache = get_provider_cache();
     let refresh_registry = get_refresh_registry();
@@ -326,9 +327,9 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 /// - Direct parameters `param`
 pub trait UseProvider<Args> {
     /// The type of data returned on success
-    type Output: Clone + PartialEq + Send + Sync + 'static;
+    type Output: ProviderOutputBounds;
     /// The type of error returned on failure
-    type Error: Clone + Send + Sync + 'static;
+    type Error: ProviderErrorBounds;
 
     /// Use the provider with the given arguments
     fn use_provider(self, args: Args) -> Signal<ProviderState<Self::Output, Self::Error>>;
@@ -359,7 +360,7 @@ fn use_provider_core<P, Param>(
 ) -> Signal<ProviderState<P::Output, P::Error>>
 where
     P: Provider<Param> + Send + Clone,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     let mut state = use_signal(|| ProviderState::Loading {
         task: spawn(async {}),
@@ -463,7 +464,7 @@ fn check_and_handle_swr_core<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     let stale_time = provider.stale_time();
     let cache_expiration = provider.cache_expiration();
@@ -521,7 +522,7 @@ fn setup_interval_task_core<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone + Send,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     if let Some(interval) = provider.interval() {
         let cache_clone = cache.clone();
@@ -559,7 +560,7 @@ fn setup_cache_expiration_task_core<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone + Send,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     if let Some(expiration) = provider.cache_expiration() {
         let cache_clone = cache.clone();
@@ -601,7 +602,7 @@ fn setup_stale_check_task_core<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone + Send,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     if let Some(stale_time) = provider.stale_time() {
         let cache_clone = cache.clone();
@@ -661,7 +662,7 @@ fn setup_intelligent_cache_management<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     // Set up periodic cleanup task for this provider if cache_expiration is configured
     if let Some(cache_expiration) = provider.cache_expiration() {

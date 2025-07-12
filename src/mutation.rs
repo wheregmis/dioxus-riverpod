@@ -19,6 +19,7 @@ use tracing::debug;
 use crate::{
     global::{get_global_cache, get_global_refresh_registry},
     hooks::Provider,
+    types::ProviderParamBounds,
 };
 
 /// Represents the state of a mutation operation
@@ -337,7 +338,7 @@ where
 pub fn provider_cache_key<P, Param>(provider: P, param: Param) -> String
 where
     P: Provider<Param>,
-    Param: Clone + PartialEq + Hash + Debug + 'static,
+    Param: ProviderParamBounds,
 {
     provider.id(&param)
 }
