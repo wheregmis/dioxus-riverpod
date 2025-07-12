@@ -34,7 +34,6 @@ use tracing::debug;
 use crate::{
     cache::ProviderCache,
     global::{get_global_cache, get_global_refresh_registry},
-    // provider_state::ProviderState, // REMOVE THIS LINE
     refresh::{RefreshRegistry, TaskType},
 };
 
