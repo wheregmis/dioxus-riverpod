@@ -189,9 +189,9 @@ fn SystemMetricsCard() -> Element {
             div { class: "card-header",
                 h3 { "System Metrics (5s interval)" }
                 div { class: match &*data.read() {
-                    AsyncState::Loading { .. } => "status loading",
-                    AsyncState::Error(_) => "status error",
-                    AsyncState::Success(_) => "status success",
+                    ProviderState::Loading { .. } => "status loading",
+                    ProviderState::Error(_) => "status error",
+                    ProviderState::Success(_) => "status success",
                 }}
             }
 
@@ -199,18 +199,18 @@ fn SystemMetricsCard() -> Element {
 
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading { .. } => rsx! {
+                    ProviderState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "spinner" }
                             span { "Loading..." }
                         }
                     },
-                    AsyncState::Error(e) => rsx! {
+                    ProviderState::Error(e) => rsx! {
                         div { class: "error-state",
                             span { "❌ Error: {e}" }
                         }
                     },
-                    AsyncState::Success(metrics) => rsx! {
+                    ProviderState::Success(metrics) => rsx! {
                         div { class: "data-grid",
                             div { class: "metric",
                                 span { class: "label", "Disk Usage:" }
@@ -249,9 +249,9 @@ fn BusinessMetricsCard() -> Element {
             div { class: "card-header",
                 h3 { "Business Metrics (10s interval)" }
                 div { class: match &*data.read() {
-                    AsyncState::Loading { .. } => "status loading",
-                    AsyncState::Error(_) => "status error",
-                    AsyncState::Success(_) => "status success",
+                    ProviderState::Loading { .. } => "status loading",
+                    ProviderState::Error(_) => "status error",
+                    ProviderState::Success(_) => "status success",
                 }}
             }
 
@@ -259,18 +259,18 @@ fn BusinessMetricsCard() -> Element {
 
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading { .. } => rsx! {
+                    ProviderState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "spinner" }
                             span { "Loading..." }
                         }
                     },
-                    AsyncState::Error(e) => rsx! {
+                    ProviderState::Error(e) => rsx! {
                         div { class: "error-state",
                             span { "❌ Error: {e}" }
                         }
                     },
-                    AsyncState::Success(metrics) => rsx! {
+                    ProviderState::Success(metrics) => rsx! {
                         div { class: "data-grid",
                             div { class: "metric",
                                 span { class: "label", "Daily Revenue:" }
@@ -304,13 +304,13 @@ fn BusinessMetricsCard() -> Element {
 fn MetricsCard(
     title: String,
     description: String,
-    data: Signal<AsyncState<LiveStats, String>>,
+    data: Signal<ProviderState<LiveStats, String>>,
     color_class: String,
 ) -> Element {
     let status_class = match &*data.read() {
-        AsyncState::Loading { .. } => "status loading",
-        AsyncState::Error(_) => "status error",
-        AsyncState::Success(_) => "status success",
+        ProviderState::Loading { .. } => "status loading",
+        ProviderState::Error(_) => "status error",
+        ProviderState::Success(_) => "status success",
     };
 
     rsx! {
@@ -324,18 +324,18 @@ fn MetricsCard(
 
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading { .. } => rsx! {
+                    ProviderState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "spinner" }
                             span { "Loading..." }
                         }
                     },
-                    AsyncState::Error(e) => rsx! {
+                    ProviderState::Error(e) => rsx! {
                         div { class: "error-state",
                             span { "❌ Error: {e}" }
                         }
                     },
-                    AsyncState::Success(stats) => rsx! {
+                    ProviderState::Success(stats) => rsx! {
                         div { class: "data-grid",
                             div { class: "metric",
                                 span { class: "label", "Active Users:" }

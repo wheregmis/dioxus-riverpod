@@ -292,15 +292,15 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
             div { class: "card user-section",
                 h4 { "👤 User Data" }
                 match &*user_data.read() {
-                    AsyncState::Loading { .. } => rsx! { p { class: "loading", "Loading user..." } },
-                    AsyncState::Success(user) => rsx! {
+                    ProviderState::Loading { .. } => rsx! { p { class: "loading", "Loading user..." } },
+                    ProviderState::Success(user) => rsx! {
                         div {
                             p { strong { "Name: " } {user.name.clone()} }
                             p { strong { "Email: " } {user.email.clone()} }
                             p { strong { "ID: " } {user.id.to_string()} }
                         }
                     },
-                    AsyncState::Error(err) => rsx! { p { style: "color: #dc3545;", "Error: {err}" } }
+                    ProviderState::Error(err) => rsx! { p { style: "color: #dc3545;", "Error: {err}" } }
                 }
             }
 
@@ -308,14 +308,14 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
             div { class: "card permissions-section",
                 h4 { "🔐 Permissions" }
                 match &*permissions_data.read() {
-                    AsyncState::Loading { .. } => rsx! { p { class: "loading", "Loading permissions..." } },
-                    AsyncState::Success(perms) => rsx! {
+                    ProviderState::Loading { .. } => rsx! { p { class: "loading", "Loading permissions..." } },
+                    ProviderState::Success(perms) => rsx! {
                         div {
                             p { strong { "Role: " } {perms.role.clone()} }
                             p { strong { "Permissions: " } {perms.permissions.join(", ")} }
                         }
                     },
-                    AsyncState::Error(err) => rsx! { p { style: "color: #dc3545;", "Error: {err}" } }
+                    ProviderState::Error(err) => rsx! { p { style: "color: #dc3545;", "Error: {err}" } }
                 }
             }
 
@@ -323,15 +323,15 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
             div { class: "card settings-section",
                 h4 { "⚙️ Settings" }
                 match &*settings_data.read() {
-                    AsyncState::Loading { .. } => rsx! { p { class: "loading", "Loading settings..." } },
-                    AsyncState::Success(settings) => rsx! {
+                    ProviderState::Loading { .. } => rsx! { p { class: "loading", "Loading settings..." } },
+                    ProviderState::Success(settings) => rsx! {
                         div {
                             p { strong { "Theme: " } {settings.theme.clone()} }
                             p { strong { "Language: " } {settings.language.clone()} }
                             p { strong { "Notifications: " } {if settings.notifications_enabled { "Enabled" } else { "Disabled" }} }
                         }
                     },
-                    AsyncState::Error(err) => rsx! { p { style: "color: #dc3545;", "Error: {err}" } }
+                    ProviderState::Error(err) => rsx! { p { style: "color: #dc3545;", "Error: {err}" } }
                 }
             }
         }
@@ -345,12 +345,12 @@ fn ComposableProviderDemo(user_id: u32) -> Element {
     rsx! {
         div { class: "grid",
             match &*profile_data.read() {
-                AsyncState::Loading { .. } => rsx! {
+                ProviderState::Loading { .. } => rsx! {
                     div { class: "loading",
                         p { "⚡ Loading full profile in parallel..." }
                     }
                 },
-                AsyncState::Success(profile) => rsx! {
+                ProviderState::Success(profile) => rsx! {
                     div { class: "success composition-section",
                         div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;",
                             h3 { style: "color: #28a745; margin: 0;", "✅ Full Profile Loaded" }
@@ -385,7 +385,7 @@ fn ComposableProviderDemo(user_id: u32) -> Element {
                         }
                     }
                 },
-                AsyncState::Error(err) => rsx! {
+                ProviderState::Error(err) => rsx! {
                     div { class: "error",
                         h3 { "❌ Failed to Load Profile" }
                         p { "Error: {err}" }
@@ -406,10 +406,10 @@ fn PartialCompositionDemo(user_id: u32) -> Element {
     rsx! {
         div { class: "grid",
             match &*user_with_permissions.read() {
-                AsyncState::Loading { .. } => rsx! {
+                ProviderState::Loading { .. } => rsx! {
                     p { class: "loading", "Loading user with permissions..." }
                 },
-                AsyncState::Success(user_perms) => rsx! {
+                ProviderState::Success(user_perms) => rsx! {
                     div { class: "card",
                         h3 { style: "color: #6f42c1; margin-top: 0;", "👤🔐 User + Permissions (Partial Composition)" }
 
@@ -428,7 +428,7 @@ fn PartialCompositionDemo(user_id: u32) -> Element {
                         }
                     }
                 },
-                AsyncState::Error(err) => rsx! {
+                ProviderState::Error(err) => rsx! {
                     p { style: "color: #dc3545;", "Error: {err}" }
                 }
             }

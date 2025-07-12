@@ -50,17 +50,17 @@ fn App() -> Element {
             div { style: "margin: 20px 0; padding: 20px; border: 1px solid #ccc;",
                 h3 { "Test Data (expires in 5s):" }
                 match &*data.read() {
-                    AsyncState::Loading { .. } => rsx! {
+                    ProviderState::Loading { .. } => rsx! {
                         div { style: "color: orange;",
                             "🔄 Loading data..."
                         }
                     },
-                    AsyncState::Success(result) => rsx! {
+                    ProviderState::Success(result) => rsx! {
                         div { style: "color: green;",
                             "✅ Success: {result}"
                         }
                     },
-                    AsyncState::Error(err) => rsx! {
+                    ProviderState::Error(err) => rsx! {
                         div { style: "color: red;",
                             "❌ Error: {err}"
                         }

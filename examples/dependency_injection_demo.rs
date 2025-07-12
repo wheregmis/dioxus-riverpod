@@ -167,26 +167,26 @@ fn UserProfile(user_id: u32) -> Element {
             }
 
             match user() {
-                AsyncState::Loading { .. } => rsx! {
+                ProviderState::Loading { .. } => rsx! {
                     div { class: "loading", "Loading user..." }
                 },
-                AsyncState::Success(user) => rsx! {
+                ProviderState::Success(user) => rsx! {
                     div { class: "user-info",
                         h2 { "{user.name}" }
                         p { "Email: {user.email}" }
                         p { "ID: {user.id}" }
                     }
                 },
-                AsyncState::Error(err) => rsx! {
+                ProviderState::Error(err) => rsx! {
                     div { class: "error", "Error loading user: {err}" }
                 },
             }
 
             match posts() {
-                AsyncState::Loading { .. } => rsx! {
+                ProviderState::Loading { .. } => rsx! {
                     div { class: "loading", "Loading posts..." }
                 },
-                AsyncState::Success(posts) => rsx! {
+                ProviderState::Success(posts) => rsx! {
                     div { class: "posts",
                         h3 { "Posts" }
                         for post in posts {
@@ -197,7 +197,7 @@ fn UserProfile(user_id: u32) -> Element {
                         }
                     }
                 },
-                AsyncState::Error(err) => rsx! {
+                ProviderState::Error(err) => rsx! {
                     div { class: "error", "Error loading posts: {err}" }
                 },
             }
@@ -223,27 +223,27 @@ fn CachedUserProfile(user_id: u32) -> Element {
             p { style: "color: #666; font-size: 0.9em;", "User ID: {user_id}" }
 
             match cached_user() {
-                AsyncState::Loading { .. } => rsx! {
+                ProviderState::Loading { .. } => rsx! {
                     div { class: "loading", "Loading cached user..." }
                 },
-                AsyncState::Success(user) => rsx! {
+                ProviderState::Success(user) => rsx! {
                     div { class: "user-info",
                         h4 { "{user.name}" }
                         p { "Email: {user.email}" }
                         small { "This data is cached for 30 seconds" }
                     }
                 },
-                AsyncState::Error(err) => rsx! {
+                ProviderState::Error(err) => rsx! {
                     div { class: "error", "Error loading cached user: {err}" }
                 },
             }
 
             h4 { "Fresh Posts (10s stale time)" }
             match fresh_posts() {
-                AsyncState::Loading { .. } => rsx! {
+                ProviderState::Loading { .. } => rsx! {
                     div { class: "loading", "Loading fresh posts..." }
                 },
-                AsyncState::Success(posts) => rsx! {
+                ProviderState::Success(posts) => rsx! {
                     div { class: "posts",
                         for post in posts {
                             div { class: "post",
@@ -258,7 +258,7 @@ fn CachedUserProfile(user_id: u32) -> Element {
                         small { "Posts become stale after 10 seconds but are refreshed in background" }
                     }
                 },
-                AsyncState::Error(err) => rsx! {
+                ProviderState::Error(err) => rsx! {
                     div { class: "error", "Error loading fresh posts: {err}" }
                 },
             }

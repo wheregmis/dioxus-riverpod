@@ -26,13 +26,13 @@
 //! }
 //! ```
 
+use dioxus_lib::prelude::SuspendedFuture;
 use dioxus_lib::prelude::*;
-use dioxus_lib::prelude::{SuspendedFuture, Task};
 use std::{fmt::Debug, future::Future, hash::Hash, time::Duration};
 use tracing::debug;
 
 use crate::{
-    cache::{AsyncState, ProviderCache},
+    cache::{ProviderCache, ProviderState},
     global::{get_global_cache, get_global_refresh_registry},
     refresh::{RefreshRegistry, TaskType},
 };
@@ -131,7 +131,7 @@ where
 
 /// Extension trait to enable suspense support for provider signals
 ///
-/// Allows you to call `.suspend()` on a `Signal<AsyncState<T, E>>`
+/// Allows you to call `.suspend()` on a `Signal<ProviderState<T, E>>`
 /// inside a component. If the state is `Loading`, this will suspend
 /// rendering and trigger Dioxus's SuspenseBoundary fallback.
 ///
@@ -159,14 +159,15 @@ impl From<RenderError> for dioxus_lib::prelude::RenderError {
     }
 }
 
-impl<T: Clone, E: Clone> SuspenseSignalExt<T, E> for Signal<AsyncState<T, E>> {
+// Update SuspenseSignalExt to use ProviderState
+impl<T: Clone, E: Clone> SuspenseSignalExt<T, E> for Signal<ProviderState<T, E>> {
     fn suspend(&self) -> Result<Result<T, E>, RenderError> {
         match &*self.read() {
-            AsyncState::Loading { task } => {
+            ProviderState::Loading { task } => {
                 Err(RenderError::Suspended(SuspendedFuture::new(*task)))
             }
-            AsyncState::Success(data) => Ok(Ok(data.clone())),
-            AsyncState::Error(error) => Ok(Err(error.clone())),
+            ProviderState::Success(data) => Ok(Ok(data.clone())),
+            ProviderState::Error(error) => Ok(Err(error.clone())),
         }
     }
 }
@@ -395,7 +396,7 @@ pub trait UseProvider<Args> {
     type Error: Clone + Send + Sync + 'static;
 
     /// Use the provider with the given arguments
-    fn use_provider(self, args: Args) -> Signal<AsyncState<Self::Output, Self::Error>>;
+    fn use_provider(self, args: Args) -> Signal<ProviderState<Self::Output, Self::Error>>;
 }
 
 /// Unified implementation for all providers using parameter normalization
@@ -410,19 +411,22 @@ where
     type Output = P::Output;
     type Error = P::Error;
 
-    fn use_provider(self, args: Args) -> Signal<AsyncState<Self::Output, Self::Error>> {
+    fn use_provider(self, args: Args) -> Signal<ProviderState<Self::Output, Self::Error>> {
         let param = args.into_param();
         use_provider_core(self, param)
     }
 }
 
 /// Core provider implementation that handles all the common logic
-fn use_provider_core<P, Param>(provider: P, param: Param) -> Signal<AsyncState<P::Output, P::Error>>
+fn use_provider_core<P, Param>(
+    provider: P,
+    param: Param,
+) -> Signal<ProviderState<P::Output, P::Error>>
 where
     P: Provider<Param> + Send + Clone,
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
-    let mut state = use_signal(|| AsyncState::Loading {
+    let mut state = use_signal(|| ProviderState::Loading {
         task: spawn(async {}),
     });
     let cache = get_provider_cache();
@@ -474,12 +478,12 @@ where
             match cached_result {
                 Ok(data) => {
                     let _ = spawn(async move {
-                        state.set(AsyncState::Success(data));
+                        state.set(ProviderState::Success(data));
                     });
                 }
                 Err(error) => {
                     let _ = spawn(async move {
-                        state.set(AsyncState::Error(error));
+                        state.set(ProviderState::Error(error));
                     });
                 }
             }
@@ -504,12 +508,12 @@ where
             if updated {
                 // Only update state and trigger rerender if value changed
                 match result {
-                    Ok(data) => state_for_async.set(AsyncState::Success(data)),
-                    Err(error) => state_for_async.set(AsyncState::Error(error)),
+                    Ok(data) => state_for_async.set(ProviderState::Success(data)),
+                    Err(error) => state_for_async.set(ProviderState::Error(error)),
                 }
             }
         });
-        state.set(AsyncState::Loading { task });
+        state.set(ProviderState::Loading { task });
     }));
 
     state
@@ -817,7 +821,7 @@ fn setup_intelligent_cache_management<P, Param>(
 ///     }
 /// }
 /// ```
-pub fn use_provider<P, Args>(provider: P, args: Args) -> Signal<AsyncState<P::Output, P::Error>>
+pub fn use_provider<P, Args>(provider: P, args: Args) -> Signal<ProviderState<P::Output, P::Error>>
 where
     P: UseProvider<Args>,
 {

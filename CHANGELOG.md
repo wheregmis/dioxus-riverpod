@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Breaking Change
-- `AsyncState::Loading` is now a struct variant: `AsyncState::Loading { task: Task }`. All pattern matches must use `AsyncState::Loading { .. }` instead of `AsyncState::Loading`. This affects all provider and consumer code that matches on loading state.
+- `AsyncState` has been renamed to `ProviderState` for clarity and consistency with the library's naming. The loading state is now `ProviderState::Loading { task: Task }`. All pattern matches must use `ProviderState::Loading { .. }` instead of `AsyncState::Loading`. This affects all provider and consumer code that matches on loading state.
 
 ## [0.0.5](https://github.com/wheregmis/dioxus-provider/compare/dioxus-provider-v0.0.4...dioxus-provider-v0.0.5) - 2025-07-08
 

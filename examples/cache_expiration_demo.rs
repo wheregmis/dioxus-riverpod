@@ -400,13 +400,13 @@ fn CacheExpirationDemo() -> Element {
 fn CacheCard<T: 'static + Clone + PartialEq, E: 'static + Clone + PartialEq + std::fmt::Display>(
     title: String,
     cache_type: &'static str,
-    data: Signal<AsyncState<T, E>>,
+    data: Signal<ProviderState<T, E>>,
     render_success: fn(&T) -> Element,
 ) -> Element {
     let cache_status = match &*data.read() {
-        AsyncState::Loading { .. } => "cache-miss",
-        AsyncState::Success(_) => "cache-hit",
-        AsyncState::Error(_) => "cache-error",
+        ProviderState::Loading { .. } => "cache-miss",
+        ProviderState::Success(_) => "cache-hit",
+        ProviderState::Error(_) => "cache-error",
     };
 
     rsx! {
@@ -424,19 +424,19 @@ fn CacheCard<T: 'static + Clone + PartialEq, E: 'static + Clone + PartialEq + st
             }
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading { .. } => rsx! {
+                    ProviderState::Loading { .. } => rsx! {
                         div { class: "loading-container",
                             div { class: "loading-spinner" }
                             span { "Cache expired - fetching fresh data..." }
                         }
                     },
-                    AsyncState::Error(e) => rsx! {
+                    ProviderState::Error(e) => rsx! {
                         div { class: "error-container",
                             span { class: "error-icon", "❌" }
                             span { class: "error-message", "Error: {e}" }
                         }
                     },
-                    AsyncState::Success(value) => render_success(value),
+                    ProviderState::Success(value) => render_success(value),
                 }
             }
         }
