@@ -316,40 +316,28 @@ let chained = state.and_then(|v| if v > 0 { ProviderState::Success(v * 2) } else
 
 See the API docs for more details.
 
-## Running The Examples
+## Examples Gallery
 
-The `examples` directory contains comprehensive demos covering all library features.
+Explore the full power of `dioxus-provider` with these real-world, ready-to-run examples in the [`examples/`](./examples/) directory:
 
-### Core Features
-- `comprehensive_demo.rs`: Showcases all provider features working together. **A great place to start!**
-- `counter_mutation_demo.rs`: Complete mutation system demo with optimistic updates and cache invalidation.
+| Example | Description |
+|---------|-------------|
+| [`comprehensive_demo.rs`](./examples/comprehensive_demo.rs) | **All-in-one showcase**: Demonstrates global providers, interval refresh, SWR, cache expiration, error handling, parameterized providers, and more. |
+| [`cache_expiration_demo.rs`](./examples/cache_expiration_demo.rs) | **Cache Expiration**: Shows how data is evicted and re-fetched after TTL, with manual invalidation and cache hit/miss indicators. |
+| [`swr_demo.rs`](./examples/swr_demo.rs) | **Stale-While-Revalidate (SWR)**: Instant data serving from cache, background revalidation, and manual refresh. |
+| [`interval_refresh_demo.rs`](./examples/interval_refresh_demo.rs) | **Interval Refresh**: Automatic background data updates at configurable intervals. |
+| [`composable_provider_demo.rs`](./examples/composable_provider_demo.rs) | **Composable Providers**: Parallel provider execution, type-safe result composition, and error aggregation. |
+| [`dependency_injection_demo.rs`](./examples/dependency_injection_demo.rs) | **Dependency Injection**: Macro-based DI for API clients, databases, and more. |
+| [`structured_errors_demo.rs`](./examples/structured_errors_demo.rs) | **Structured Error Handling**: Rich error types, actionable messages, and error chaining. |
+| [`counter_mutation_demo.rs`](./examples/counter_mutation_demo.rs) | **Mutations**: Counter with provider invalidation and mutation state tracking. |
+| [`cache_expiration_test.rs`](./examples/cache_expiration_test.rs) | **Cache Expiration Test**: Verifies that cache expiration triggers loading and refetch. |
+| [`suspense_demo.rs`](./examples/suspense_demo.rs) | **Suspense Integration**: Shows how to use Dioxus SuspenseBoundary with async providers. |
+| [`provider_state_combinators.rs`](./examples/provider_state_combinators.rs) | **ProviderState Combinators**: Practical use of `.map`, `.map_err`, and `.and_then` for ergonomic state transformations in UI. |
 
-### Error Handling & Composition
-- `structured_errors_demo.rs`: **NEW!** Demonstrates comprehensive structured error handling with `ProviderError`, `UserError`, `ApiError`, and `DatabaseError` types. Shows proper error UI feedback and validation patterns.
-- `composable_provider_demo.rs`: **NEW!** Showcases parallel provider composition for performance optimization. Demonstrates how to run multiple providers simultaneously and combine their results.
-- `dependency_injection_demo.rs`: Shows manual dependency injection patterns with `inject::<Type>()` for clean provider architecture.
-
-### Caching & Performance
-- `swr_demo.rs`: Focuses on the Stale-While-Revalidate pattern for instant data loading.
-- `cache_expiration_demo.rs`: Demonstrates TTL-based cache expiration strategies.
-- `interval_refresh_demo.rs`: Shows automatic background data refreshing with configurable intervals.
-
-To run an example:
-```bash
-# Run the comprehensive demo (recommended starting point)
-cargo run --example comprehensive_demo
-
-# Try the new error handling demo
-cargo run --example structured_errors_demo
-
-# See parallel provider composition in action
-cargo run --example composable_provider_demo
-
-# Or run any specific demo
-cargo run --example swr_demo
-cargo run --example counter_mutation_demo
-cargo run --example dependency_injection_demo
-```
+> **Tip:**
+> Run any example with  
+> `cargo run --example <example_name>`  
+> (e.g., `cargo run --example swr_demo`)
 
 ## Ecosystem & Alternatives
 
