@@ -242,7 +242,7 @@ fn SWRDataDisplay<
     render_success: fn(&T) -> Element,
 ) -> Element {
     match &*data.read() {
-        AsyncState::Loading => rsx! {
+        AsyncState::Loading { .. } => rsx! {
             div { class: "loading-container",
                 div { class: "loading-spinner" }
                 span { "Fetching fresh data..." }

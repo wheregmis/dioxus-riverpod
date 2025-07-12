@@ -46,7 +46,7 @@ fn CounterApp() -> Element {
             },
             h2 { class: "text-lg font-semibold mt-4", "Provider State:" },
             match &*counter.read() {
-                AsyncState::Loading => rsx! { p { "Loading counter..." } },
+                AsyncState::Loading { .. } => rsx! { p { "Loading counter..." } },
                 AsyncState::Success(val) => rsx! { p { "Counter (from provider): {val}" } },
                 AsyncState::Error(err) => rsx! { p { "Error: {err}" } },
             },

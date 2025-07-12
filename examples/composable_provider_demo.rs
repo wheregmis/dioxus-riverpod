@@ -292,7 +292,7 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
             div { class: "card user-section",
                 h4 { "👤 User Data" }
                 match &*user_data.read() {
-                    AsyncState::Loading => rsx! { p { class: "loading", "Loading user..." } },
+                    AsyncState::Loading { .. } => rsx! { p { class: "loading", "Loading user..." } },
                     AsyncState::Success(user) => rsx! {
                         div {
                             p { strong { "Name: " } {user.name.clone()} }
@@ -308,7 +308,7 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
             div { class: "card permissions-section",
                 h4 { "🔐 Permissions" }
                 match &*permissions_data.read() {
-                    AsyncState::Loading => rsx! { p { class: "loading", "Loading permissions..." } },
+                    AsyncState::Loading { .. } => rsx! { p { class: "loading", "Loading permissions..." } },
                     AsyncState::Success(perms) => rsx! {
                         div {
                             p { strong { "Role: " } {perms.role.clone()} }
@@ -323,7 +323,7 @@ fn IndividualProvidersDemo(user_id: u32) -> Element {
             div { class: "card settings-section",
                 h4 { "⚙️ Settings" }
                 match &*settings_data.read() {
-                    AsyncState::Loading => rsx! { p { class: "loading", "Loading settings..." } },
+                    AsyncState::Loading { .. } => rsx! { p { class: "loading", "Loading settings..." } },
                     AsyncState::Success(settings) => rsx! {
                         div {
                             p { strong { "Theme: " } {settings.theme.clone()} }
@@ -345,7 +345,7 @@ fn ComposableProviderDemo(user_id: u32) -> Element {
     rsx! {
         div { class: "grid",
             match &*profile_data.read() {
-                AsyncState::Loading => rsx! {
+                AsyncState::Loading { .. } => rsx! {
                     div { class: "loading",
                         p { "⚡ Loading full profile in parallel..." }
                     }
@@ -406,7 +406,7 @@ fn PartialCompositionDemo(user_id: u32) -> Element {
     rsx! {
         div { class: "grid",
             match &*user_with_permissions.read() {
-                AsyncState::Loading => rsx! {
+                AsyncState::Loading { .. } => rsx! {
                     p { class: "loading", "Loading user with permissions..." }
                 },
                 AsyncState::Success(user_perms) => rsx! {

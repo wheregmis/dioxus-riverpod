@@ -27,6 +27,7 @@
 //! ```
 
 use dioxus_lib::prelude::*;
+use dioxus_lib::prelude::{SuspendedFuture, Task};
 use std::{fmt::Debug, future::Future, hash::Hash, time::Duration};
 use tracing::debug;
 
@@ -80,7 +81,7 @@ where
 {
     /// The type of data returned on success
     type Output: Clone + PartialEq + Send + Sync + 'static;
-    /// The type of error returned on failure  
+    /// The type of error returned on failure
     type Error: Clone + PartialEq + Send + Sync + 'static;
 
     /// Execute the async operation
@@ -94,8 +95,8 @@ where
     /// This ID is used for caching and invalidation. The default implementation
     /// hashes the provider's type and parameters to generate a unique ID.
     fn id(&self, param: &Param) -> String {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         std::any::TypeId::of::<Self>().hash(&mut hasher);
@@ -125,6 +126,48 @@ where
     /// trigger a background revalidation while still serving the stale data to the UI.
     fn stale_time(&self) -> Option<Duration> {
         None
+    }
+}
+
+/// Extension trait to enable suspense support for provider signals
+///
+/// Allows you to call `.suspend()` on a `Signal<AsyncState<T, E>>`
+/// inside a component. If the state is `Loading`, this will suspend
+/// rendering and trigger Dioxus's SuspenseBoundary fallback.
+///
+/// Usage:
+/// ```rust
+/// let user = use_provider(fetch_user(), (1,)).suspend()?;
+/// ```
+pub trait SuspenseSignalExt<T, E> {
+    /// Returns Ok(data) if ready, Err(RenderError::Suspended) if loading, or Ok(Err(error)) if error.
+    fn suspend(&self) -> Result<Result<T, E>, RenderError>;
+}
+
+/// Error type for suspending rendering (compatible with Dioxus SuspenseBoundary)
+#[derive(Debug, Clone, PartialEq)]
+pub enum RenderError {
+    Suspended(SuspendedFuture),
+}
+
+// Implement conversion so `?` works in components using Dioxus's RenderError
+impl From<RenderError> for dioxus_lib::prelude::RenderError {
+    fn from(err: RenderError) -> Self {
+        match err {
+            RenderError::Suspended(fut) => dioxus_lib::prelude::RenderError::Suspended(fut),
+        }
+    }
+}
+
+impl<T: Clone, E: Clone> SuspenseSignalExt<T, E> for Signal<AsyncState<T, E>> {
+    fn suspend(&self) -> Result<Result<T, E>, RenderError> {
+        match &*self.read() {
+            AsyncState::Loading { task } => {
+                Err(RenderError::Suspended(SuspendedFuture::new(*task)))
+            }
+            AsyncState::Success(data) => Ok(Ok(data.clone())),
+            AsyncState::Error(error) => Ok(Err(error.clone())),
+        }
     }
 }
 
@@ -174,10 +217,10 @@ fn get_refresh_registry() -> RefreshRegistry {
 /// #[component]
 /// fn MyComponent() -> Element {
 ///     let cache = use_provider_cache();
-///     
+///
 ///     // Manually invalidate a specific cache entry
 ///     cache.invalidate("my_provider_key");
-///     
+///
 ///     rsx! {
 ///         div { "Cache operations example" }
 ///     }
@@ -209,7 +252,7 @@ pub fn use_provider_cache() -> ProviderCache {
 /// #[component]
 /// fn MyComponent() -> Element {
 ///     let invalidate_user = use_invalidate_provider(user_provider(), 1);
-///     
+///
 ///     rsx! {
 ///         button {
 ///             onclick: move |_| invalidate_user(),
@@ -249,7 +292,7 @@ where
 /// #[component]
 /// fn MyComponent() -> Element {
 ///     let clear_cache = use_clear_provider_cache();
-///     
+///
 ///     rsx! {
 ///         button {
 ///             onclick: move |_| clear_cache(),
@@ -272,14 +315,14 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
 ///
 /// This trait allows the `use_provider` hook to accept parameters in different formats:
 /// - `()` for no parameters
-/// - `(param,)` for single parameter in tuple  
+/// - `(param,)` for single parameter in tuple
 /// - Common primitive types directly
-/// 
+///
 /// This eliminates the need for multiple `UseProvider` implementations.
 pub trait IntoProviderParam {
     /// The target parameter type after conversion
     type Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static;
-    
+
     /// Convert the input into the parameter format expected by the provider
     fn into_param(self) -> Self::Param;
 }
@@ -287,19 +330,19 @@ pub trait IntoProviderParam {
 // Implementation for no parameters: () -> ()
 impl IntoProviderParam for () {
     type Param = ();
-    
+
     fn into_param(self) -> Self::Param {
         ()
     }
 }
 
-// Implementation for tuple parameters: (Param,) -> Param  
-impl<T> IntoProviderParam for (T,) 
-where 
-    T: Clone + PartialEq + Hash + Debug + Send + Sync + 'static
+// Implementation for tuple parameters: (Param,) -> Param
+impl<T> IntoProviderParam for (T,)
+where
+    T: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
     type Param = T;
-    
+
     fn into_param(self) -> Self::Param {
         self.0
     }
@@ -308,7 +351,7 @@ where
 // Common direct parameter implementations to avoid conflicts
 impl IntoProviderParam for u32 {
     type Param = u32;
-    
+
     fn into_param(self) -> Self::Param {
         self
     }
@@ -316,7 +359,7 @@ impl IntoProviderParam for u32 {
 
 impl IntoProviderParam for i32 {
     type Param = i32;
-    
+
     fn into_param(self) -> Self::Param {
         self
     }
@@ -324,7 +367,7 @@ impl IntoProviderParam for i32 {
 
 impl IntoProviderParam for String {
     type Param = String;
-    
+
     fn into_param(self) -> Self::Param {
         self
     }
@@ -332,7 +375,7 @@ impl IntoProviderParam for String {
 
 impl IntoProviderParam for &str {
     type Param = String;
-    
+
     fn into_param(self) -> Self::Param {
         self.to_string()
     }
@@ -343,7 +386,7 @@ impl IntoProviderParam for &str {
 /// This trait provides a single, unified interface for using providers
 /// regardless of their parameter format. It automatically handles:
 /// - No parameters `()`
-/// - Tuple parameters `(param,)`  
+/// - Tuple parameters `(param,)`
 /// - Direct parameters `param`
 pub trait UseProvider<Args> {
     /// The type of data returned on success
@@ -379,7 +422,9 @@ where
     P: Provider<Param> + Send + Clone,
     Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
 {
-    let mut state = use_signal(|| AsyncState::Loading);
+    let mut state = use_signal(|| AsyncState::Loading {
+        task: spawn(async {}),
+    });
     let cache = get_provider_cache();
     let refresh_registry = get_refresh_registry();
 
@@ -442,21 +487,20 @@ where
         }
 
         // Cache miss - set loading and spawn async task
-        let _ = spawn(async move {
-            state.set(AsyncState::Loading);
-        });
-
-        let cache = cache.clone();
         let cache_clone = cache.clone();
         let cache_key_clone = cache_key.clone();
         let provider = provider.clone();
         let param = param.clone();
         let mut state_for_async = state;
 
-        spawn(async move {
+        // Spawn the real async task and store the handle in Loading
+        let task = spawn(async move {
             let result = provider.run(param).await;
             let updated = cache_clone.set(cache_key_clone.clone(), result.clone());
-            debug!("📊 [CACHE-STORE] Attempted to store new data for: {} (updated: {})", cache_key_clone, updated);
+            debug!(
+                "📊 [CACHE-STORE] Attempted to store new data for: {} (updated: {})",
+                cache_key_clone, updated
+            );
             if updated {
                 // Only update state and trigger rerender if value changed
                 match result {
@@ -465,6 +509,7 @@ where
                 }
             }
         });
+        state.set(AsyncState::Loading { task });
     }));
 
     state
@@ -597,7 +642,7 @@ fn setup_cache_expiration_task_core<P, Param>(
                             );
                             cache_lock.remove(&cache_key_clone);
                             drop(cache_lock); // Release lock before triggering refresh
-                            
+
                             // Trigger refresh to mark all reactive contexts as dirty
                             refresh_registry_clone.trigger_refresh(&cache_key_clone);
                         }
@@ -682,10 +727,10 @@ fn setup_intelligent_cache_management<P, Param>(
     // Set up periodic cleanup task for this provider if cache_expiration is configured
     if let Some(cache_expiration) = provider.cache_expiration() {
         let cleanup_interval = std::cmp::max(
-            cache_expiration / 4, // Clean up 4x more frequently than expiration
+            cache_expiration / 4,    // Clean up 4x more frequently than expiration
             Duration::from_secs(30), // But at least every 30 seconds
         );
-        
+
         let cache_clone = cache.clone();
         let unused_threshold = cache_expiration * 2; // Remove entries unused for 2x expiration time
         let cleanup_key = format!("{}_cleanup", cache_key);
@@ -698,19 +743,28 @@ fn setup_intelligent_cache_management<P, Param>(
                 // Remove entries that haven't been accessed recently
                 let removed = cache_clone.cleanup_unused_entries(unused_threshold);
                 if removed > 0 {
-                    debug!("🧹 [SMART-CLEANUP] Removed {} unused cache entries", removed);
+                    debug!(
+                        "🧹 [SMART-CLEANUP] Removed {} unused cache entries",
+                        removed
+                    );
                 }
 
                 // Enforce cache size limits (configurable - could be made dynamic)
                 const MAX_CACHE_SIZE: usize = 1000;
                 let evicted = cache_clone.evict_lru_entries(MAX_CACHE_SIZE);
                 if evicted > 0 {
-                    debug!("🗑️ [LRU-EVICT] Evicted {} entries due to cache size limit", evicted);
+                    debug!(
+                        "🗑️ [LRU-EVICT] Evicted {} entries due to cache size limit",
+                        evicted
+                    );
                 }
             },
         );
 
-        debug!("📊 [SMART-CACHE] Intelligent cache management enabled for: {} (cleanup every {:?})", cache_key, cleanup_interval);
+        debug!(
+            "📊 [SMART-CACHE] Intelligent cache management enabled for: {} (cleanup every {:?})",
+            cache_key, cleanup_interval
+        );
     }
 }
 
@@ -723,7 +777,7 @@ fn setup_intelligent_cache_management<P, Param>(
 /// ## Supported Parameter Formats
 ///
 /// - **No parameters**: `use_provider(provider, ())`
-/// - **Tuple parameters**: `use_provider(provider, (param,))`  
+/// - **Tuple parameters**: `use_provider(provider, (param,))`
 /// - **Direct parameters**: `use_provider(provider, param)`
 ///
 /// ## Features
@@ -757,7 +811,7 @@ fn setup_intelligent_cache_management<P, Param>(
 ///     let user = use_provider(fetch_user(), ());           // No parameters
 ///     let user_by_id = use_provider(fetch_user_by_id(), 123);     // Direct parameter
 ///     let user_by_id_tuple = use_provider(fetch_user_by_id(), (123,)); // Tuple parameter
-///     
+///
 ///     rsx! {
 ///         div { "Users loaded!" }
 ///     }

@@ -19,11 +19,13 @@ use std::time::Instant;
 #[cfg(target_family = "wasm")]
 use web_time::Instant;
 
+use dioxus_lib::prelude::Task;
+
 /// Represents the state of an async operation
 #[derive(Clone, PartialEq)]
 pub enum AsyncState<T, E> {
     /// The operation is currently loading
-    Loading,
+    Loading { task: Task },
     /// The operation completed successfully with data
     Success(T),
     /// The operation failed with an error
@@ -33,7 +35,7 @@ pub enum AsyncState<T, E> {
 impl<T, E> AsyncState<T, E> {
     /// Returns true if the state is currently loading
     pub fn is_loading(&self) -> bool {
-        matches!(self, AsyncState::Loading)
+        matches!(self, AsyncState::Loading { task: _ })
     }
 
     /// Returns true if the state contains successful data

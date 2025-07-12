@@ -189,7 +189,7 @@ fn SystemMetricsCard() -> Element {
             div { class: "card-header",
                 h3 { "System Metrics (5s interval)" }
                 div { class: match &*data.read() {
-                    AsyncState::Loading => "status loading",
+                    AsyncState::Loading { .. } => "status loading",
                     AsyncState::Error(_) => "status error",
                     AsyncState::Success(_) => "status success",
                 }}
@@ -199,7 +199,7 @@ fn SystemMetricsCard() -> Element {
 
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "spinner" }
                             span { "Loading..." }
@@ -249,7 +249,7 @@ fn BusinessMetricsCard() -> Element {
             div { class: "card-header",
                 h3 { "Business Metrics (10s interval)" }
                 div { class: match &*data.read() {
-                    AsyncState::Loading => "status loading",
+                    AsyncState::Loading { .. } => "status loading",
                     AsyncState::Error(_) => "status error",
                     AsyncState::Success(_) => "status success",
                 }}
@@ -259,7 +259,7 @@ fn BusinessMetricsCard() -> Element {
 
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "spinner" }
                             span { "Loading..." }
@@ -308,7 +308,7 @@ fn MetricsCard(
     color_class: String,
 ) -> Element {
     let status_class = match &*data.read() {
-        AsyncState::Loading => "status loading",
+        AsyncState::Loading { .. } => "status loading",
         AsyncState::Error(_) => "status error",
         AsyncState::Success(_) => "status success",
     };
@@ -324,7 +324,7 @@ fn MetricsCard(
 
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "spinner" }
                             span { "Loading..." }

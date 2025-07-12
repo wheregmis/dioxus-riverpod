@@ -144,7 +144,7 @@ fn UserProfile(user_id: u32) -> Element {
             }
 
             match &*user_data.read() {
-                AsyncState::Loading => rsx! {
+                AsyncState::Loading { .. } => rsx! {
                     div { class: "text-blue-500", "Loading user..." }
                 },
                 AsyncState::Success(user) => rsx! {

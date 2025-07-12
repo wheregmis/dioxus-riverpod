@@ -568,7 +568,7 @@ fn ComprehensiveCacheTest() -> Element {
 fn LiveMetricsCard(data: Signal<AsyncState<LiveMetrics, String>>) -> Element {
     let refresh_metrics = use_invalidate_provider(fetch_live_metrics(), ());
     let status_class = match &*data.read() {
-        AsyncState::Loading => "loading",
+        AsyncState::Loading { .. } => "loading",
         AsyncState::Success(_) => "success",
         AsyncState::Error(_) => "error",
     };
@@ -599,7 +599,7 @@ fn LiveMetricsCard(data: Signal<AsyncState<LiveMetrics, String>>) -> Element {
             }
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "loading-spinner" }
                             span { "Loading data..." }
@@ -652,7 +652,7 @@ fn LiveMetricsCard(data: Signal<AsyncState<LiveMetrics, String>>) -> Element {
 fn UserDashboardCard(data: Signal<AsyncState<UserDashboard, String>>, user_id: u32) -> Element {
     let refresh_dashboard = use_invalidate_provider(fetch_user_dashboard(), user_id);
     let status_class = match &*data.read() {
-        AsyncState::Loading => "loading",
+        AsyncState::Loading { .. } => "loading",
         AsyncState::Success(_) => "success",
         AsyncState::Error(_) => "error",
     };
@@ -683,7 +683,7 @@ fn UserDashboardCard(data: Signal<AsyncState<UserDashboard, String>>, user_id: u
             }
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "loading-spinner" }
                             span { "Loading data..." }
@@ -726,7 +726,7 @@ fn UserDashboardCard(data: Signal<AsyncState<UserDashboard, String>>, user_id: u
 fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
     let refresh_analytics = use_invalidate_provider(fetch_analytics_report(), ());
     let status_class = match &*data.read() {
-        AsyncState::Loading => "loading",
+        AsyncState::Loading { .. } => "loading",
         AsyncState::Success(_) => "success",
         AsyncState::Error(_) => "error",
     };
@@ -757,7 +757,7 @@ fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
             }
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "loading-spinner" }
                             span { "Loading data..." }
@@ -809,7 +809,7 @@ fn AnalyticsCard(data: Signal<AsyncState<AnalyticsReport, String>>) -> Element {
 fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>, session_id: String) -> Element {
     let refresh_temp = use_invalidate_provider(fetch_temporary_data(), session_id);
     let status_class = match &*data.read() {
-        AsyncState::Loading => "loading",
+        AsyncState::Loading { .. } => "loading",
         AsyncState::Success(_) => "success",
         AsyncState::Error(_) => "error",
     };
@@ -840,7 +840,7 @@ fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>, session_id: S
             }
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "loading-spinner" }
                             span { "Loading data..." }
@@ -880,7 +880,7 @@ fn TempDataCard(data: Signal<AsyncState<TempSessionData, String>>, session_id: S
 fn ChatCard(data: Signal<AsyncState<ChatData, String>>, chat_id: u32) -> Element {
     let refresh_chat = use_invalidate_provider(fetch_chat_messages(), chat_id);
     let status_class = match &*data.read() {
-        AsyncState::Loading => "loading",
+        AsyncState::Loading { .. } => "loading",
         AsyncState::Success(_) => "success",
         AsyncState::Error(_) => "error",
     };
@@ -911,7 +911,7 @@ fn ChatCard(data: Signal<AsyncState<ChatData, String>>, chat_id: u32) -> Element
             }
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-state",
                             div { class: "loading-spinner" }
                             span { "Loading data..." }

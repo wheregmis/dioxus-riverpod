@@ -167,7 +167,7 @@ fn UserProfile(user_id: u32) -> Element {
             }
 
             match user() {
-                AsyncState::Loading => rsx! {
+                AsyncState::Loading { .. } => rsx! {
                     div { class: "loading", "Loading user..." }
                 },
                 AsyncState::Success(user) => rsx! {
@@ -183,7 +183,7 @@ fn UserProfile(user_id: u32) -> Element {
             }
 
             match posts() {
-                AsyncState::Loading => rsx! {
+                AsyncState::Loading { .. } => rsx! {
                     div { class: "loading", "Loading posts..." }
                 },
                 AsyncState::Success(posts) => rsx! {
@@ -223,7 +223,7 @@ fn CachedUserProfile(user_id: u32) -> Element {
             p { style: "color: #666; font-size: 0.9em;", "User ID: {user_id}" }
 
             match cached_user() {
-                AsyncState::Loading => rsx! {
+                AsyncState::Loading { .. } => rsx! {
                     div { class: "loading", "Loading cached user..." }
                 },
                 AsyncState::Success(user) => rsx! {
@@ -240,7 +240,7 @@ fn CachedUserProfile(user_id: u32) -> Element {
 
             h4 { "Fresh Posts (10s stale time)" }
             match fresh_posts() {
-                AsyncState::Loading => rsx! {
+                AsyncState::Loading { .. } => rsx! {
                     div { class: "loading", "Loading fresh posts..." }
                 },
                 AsyncState::Success(posts) => rsx! {

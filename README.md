@@ -113,7 +113,7 @@ fn App() -> Element {
             h1 { "Dioxus Provider Demo" }
             // Pattern match on the state to render UI
             match &*message.read() {
-                AsyncState::Loading => rsx! { div { "Loading..." } },
+                AsyncState::Loading { .. } => rsx! { div { "Loading..." } },
                 AsyncState::Success(data) => rsx! { div { "Server says: {data}" } },
                 AsyncState::Error(err) => rsx! { div { "Error: {err}" } },
             }

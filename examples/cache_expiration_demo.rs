@@ -404,7 +404,7 @@ fn CacheCard<T: 'static + Clone + PartialEq, E: 'static + Clone + PartialEq + st
     render_success: fn(&T) -> Element,
 ) -> Element {
     let cache_status = match &*data.read() {
-        AsyncState::Loading => "cache-miss",
+        AsyncState::Loading { .. } => "cache-miss",
         AsyncState::Success(_) => "cache-hit",
         AsyncState::Error(_) => "cache-error",
     };
@@ -424,7 +424,7 @@ fn CacheCard<T: 'static + Clone + PartialEq, E: 'static + Clone + PartialEq + st
             }
             div { class: "card-content",
                 match &*data.read() {
-                    AsyncState::Loading => rsx! {
+                    AsyncState::Loading { .. } => rsx! {
                         div { class: "loading-container",
                             div { class: "loading-spinner" }
                             span { "Cache expired - fetching fresh data..." }
