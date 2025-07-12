@@ -256,7 +256,7 @@ fn generate_notifications(user_id: u32, call_number: u32) -> Vec<Notification> {
     (1..=3)
         .map(|i| Notification {
             id: call_number * 10 + i,
-            message: format!("Notification {} for user {}", i, user_id),
+            message: format!("Notification {i} for user {user_id}"),
             priority: if i % 2 == 0 { "high" } else { "normal" }.to_string(),
         })
         .collect()
@@ -292,7 +292,7 @@ fn generate_top_pages(call_number: u32) -> Vec<PageStats> {
 fn generate_temp_files(session_id: &str, call_number: u32) -> Vec<TempFile> {
     (1..=3)
         .map(|i| TempFile {
-            name: format!("{}_{}_temp_{}.tmp", session_id, call_number, i),
+            name: format!("{session_id}_{call_number}_temp_{i}.tmp"),
             size_kb: (call_number * i * 10) % 1000 + 10,
         })
         .collect()
@@ -304,7 +304,7 @@ fn generate_messages(chat_id: u32, call_number: u32) -> Vec<Message> {
         .map(|i| Message {
             id: call_number * 100 + i,
             user: users[(call_number as usize + i as usize) % users.len()].to_string(),
-            content: format!("Message {} in chat {}", i, chat_id),
+            content: format!("Message {i} in chat {chat_id}"),
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -964,7 +964,7 @@ fn format_timestamp(timestamp: u64) -> String {
     let diff = now.saturating_sub(timestamp);
 
     if diff < 60 {
-        format!("{}s ago", diff)
+        format!("{diff}s ago")
     } else if diff < 3600 {
         format!("{}m ago", diff / 60)
     } else {

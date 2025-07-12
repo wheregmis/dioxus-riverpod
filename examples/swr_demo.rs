@@ -54,7 +54,7 @@ async fn fetch_user_profile() -> Result<UserProfile, String> {
     Ok(UserProfile {
         name: "John Doe".to_string(),
         email: "john@example.com".to_string(),
-        last_seen: format!("API call #{}", call_number),
+        last_seen: format!("API call #{call_number}"),
         status: if call_number % 3 == 0 {
             "Away"
         } else {
@@ -75,20 +75,20 @@ async fn fetch_user_posts(user_id: u32) -> Result<Vec<Post>, String> {
     Ok(vec![
         Post {
             id: 1,
-            title: format!("Latest post from user {}", user_id),
-            content: format!("This is the latest content (fetch #{})", call_number),
+            title: format!("Latest post from user {user_id}"),
+            content: format!("This is the latest content (fetch #{call_number})"),
             timestamp: format!("2024-{:02}-15", (call_number % 12) + 1),
         },
         Post {
             id: 2,
-            title: format!("Previous post from user {}", user_id),
-            content: format!("Some older content (fetch #{})", call_number),
+            title: format!("Previous post from user {user_id}"),
+            content: format!("Some older content (fetch #{call_number})"),
             timestamp: format!("2024-{:02}-10", ((call_number + 1) % 12) + 1),
         },
         Post {
             id: 3,
-            title: format!("Archive post from user {}", user_id),
-            content: format!("Archived content (fetch #{})", call_number),
+            title: format!("Archive post from user {user_id}"),
+            content: format!("Archived content (fetch #{call_number})"),
             timestamp: format!("2024-{:02}-05", ((call_number + 2) % 12) + 1),
         },
     ])

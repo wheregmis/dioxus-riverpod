@@ -25,11 +25,8 @@ async fn fetch_test_data() -> Result<String, String> {
         .unwrap()
         .as_secs();
 
-    println!(
-        "🔄 [PROVIDER] Executing provider at timestamp: {}",
-        timestamp
-    );
-    Ok(format!("Data fetched at: {}", timestamp))
+    println!("🔄 [PROVIDER] Executing provider at timestamp: {timestamp}");
+    Ok(format!("Data fetched at: {timestamp}"))
 }
 
 #[component]
