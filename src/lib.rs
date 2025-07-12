@@ -29,7 +29,7 @@ pub mod prelude {
     pub use crate::hooks::use_provider_cache;
 
     // The async state enum, needed for matching
-    pub use crate::cache::ProviderState;
+    pub use crate::provider_state::ProviderState;
 
     // Global initialization
     pub use crate::global::init_global_providers;
