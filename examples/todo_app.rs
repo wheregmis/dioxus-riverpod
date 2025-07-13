@@ -5,6 +5,8 @@ use dioxus::prelude::FormEvent;
 use dioxus::prelude::*;
 use dioxus_provider::prelude::*;
 use serde::{Deserialize, Serialize};
+use tokio::fs;
+use tokio::time::{Duration, sleep};
 
 /// Represents a single todo item
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,37 +64,35 @@ impl PartialEq for TodoError {
 const TODO_FILE: &str = "todos.json";
 
 /// Load all todos from the persistent JSON file
-pub fn load_todos_from_file() -> Result<Vec<Todo>, TodoError> {
-    use std::fs;
-    if let Ok(data) = fs::read_to_string(TODO_FILE) {
-        let todos: Vec<Todo> = serde_json::from_str(&data)?;
-        Ok(todos)
-    } else {
-        // If file does not exist, return empty list
-        Ok(vec![])
+async fn load_todos_from_file_async() -> Result<Vec<Todo>, TodoError> {
+    match fs::read_to_string(TODO_FILE).await {
+        Ok(data) => {
+            let todos: Vec<Todo> = serde_json::from_str(&data)?;
+            Ok(todos)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+        Err(e) => Err(TodoError::Io(e)),
     }
 }
 
 /// Provider for loading all todos from persistent storage
 #[provider]
 pub async fn load_todos() -> Result<Vec<Todo>, TodoError> {
-    // Simulate async file IO (in real app, use spawn_blocking or similar for heavy IO)
-    // For this example, just call the sync function
-    load_todos_from_file()
+    load_todos_from_file_async().await
 }
 
-// Helper to write todos to file
-fn save_todos_to_file(todos: &[Todo]) -> Result<(), TodoError> {
-    use std::fs;
+/// Helper to write todos to file asynchronously
+async fn save_todos_to_file_async(todos: &[Todo]) -> Result<(), TodoError> {
     let data = serde_json::to_string_pretty(todos)?;
-    fs::write(TODO_FILE, data)?;
+    fs::write(TODO_FILE, data).await?;
     Ok(())
 }
 
 /// Mutation: Add a new todo
 #[mutation(invalidates = [load_todos])]
 pub async fn add_todo(title: String) -> Result<Vec<Todo>, TodoError> {
-    let mut todos = load_todos_from_file()?;
+    sleep(Duration::from_secs(1)).await; // Artificial delay for UX
+    let mut todos = load_todos_from_file_async().await?;
     let id = todos.iter().map(|t| t.id).max().unwrap_or(0) + 1;
     let todo = Todo {
         id,
@@ -100,17 +100,18 @@ pub async fn add_todo(title: String) -> Result<Vec<Todo>, TodoError> {
         completed: false,
     };
     todos.push(todo);
-    save_todos_to_file(&todos)?;
+    save_todos_to_file_async(&todos).await?;
     Ok(todos)
 }
 
 /// Mutation: Toggle a todo's completed status
 #[mutation(invalidates = [load_todos])]
 pub async fn toggle_todo(id: u64) -> Result<Vec<Todo>, TodoError> {
-    let mut todos = load_todos_from_file()?;
+    sleep(Duration::from_secs(1)).await; // Artificial delay for UX
+    let mut todos = load_todos_from_file_async().await?;
     if let Some(todo) = todos.iter_mut().find(|t| t.id == id) {
         todo.completed = !todo.completed;
-        save_todos_to_file(&todos)?;
+        save_todos_to_file_async(&todos).await?;
         Ok(todos)
     } else {
         Err(TodoError::NotFound)
@@ -120,10 +121,11 @@ pub async fn toggle_todo(id: u64) -> Result<Vec<Todo>, TodoError> {
 /// Mutation: Update a todo's title
 #[mutation(invalidates = [load_todos])]
 pub async fn update_todo(id: u64, new_title: String) -> Result<Vec<Todo>, TodoError> {
-    let mut todos = load_todos_from_file()?;
+    sleep(Duration::from_secs(1)).await; // Artificial delay for UX
+    let mut todos = load_todos_from_file_async().await?;
     if let Some(todo) = todos.iter_mut().find(|t| t.id == id) {
         todo.title = new_title;
-        save_todos_to_file(&todos)?;
+        save_todos_to_file_async(&todos).await?;
         Ok(todos)
     } else {
         Err(TodoError::NotFound)
@@ -133,13 +135,14 @@ pub async fn update_todo(id: u64, new_title: String) -> Result<Vec<Todo>, TodoEr
 /// Mutation: Delete a todo
 #[mutation(invalidates = [load_todos])]
 pub async fn delete_todo(id: u64) -> Result<Vec<Todo>, TodoError> {
-    let mut todos = load_todos_from_file()?;
+    sleep(Duration::from_secs(1)).await; // Artificial delay for UX
+    let mut todos = load_todos_from_file_async().await?;
     let len_before = todos.len();
     todos.retain(|t| t.id != id);
     if todos.len() == len_before {
         return Err(TodoError::NotFound);
     }
-    save_todos_to_file(&todos)?;
+    save_todos_to_file_async(&todos).await?;
     Ok(todos)
 }
 
@@ -232,8 +235,19 @@ pub fn TodoItem(todo: Todo) -> Element {
         }
     };
 
+    // Determine which mutation is loading and set message
+    let (is_mutating, mutating_msg) = if matches!(*toggle_state.read(), MutationState::Loading) {
+        (true, "Toggling...")
+    } else if matches!(*update_state.read(), MutationState::Loading) {
+        (true, "Updating...")
+    } else if matches!(*delete_state.read(), MutationState::Loading) {
+        (true, "Deleting...")
+    } else {
+        (false, "")
+    };
+
     rsx! {
-        li { class: "flex items-center gap-3 py-2 px-2 rounded hover:bg-gray-50 group transition-all",
+        li { class: "flex items-center gap-3 py-2 px-2 rounded hover:bg-gray-50 group transition-all relative",
             if *editing.read() {
                 div { class: "flex-1 flex gap-2 items-center",
                     input {
@@ -249,22 +263,12 @@ pub fn TodoItem(todo: Todo) -> Element {
                 input { r#type: "checkbox", checked: todo.completed, onclick: on_toggle, class: "accent-blue-600 w-5 h-5" }
                 span { onclick: on_edit, class: "flex-1 cursor-pointer select-text text-lg text-gray-900 group-hover:text-blue-700 transition-all", style: if todo.completed { "text-decoration: line-through; color: #888;" } else { "" }, "{todo.title}" }
                 button { onclick: on_delete, class: "ml-2 px-2 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-all opacity-80 group-hover:opacity-100", "Delete" }
-            }
-            // Show mutation states
-            match &*toggle_state.read() {
-                MutationState::Loading => rsx!(span { class: "ml-2 text-blue-500 animate-pulse", "Toggling..." }),
-                MutationState::Error(err) => rsx!(span { class: "ml-2 text-red-500", "{err}" }),
-                _ => rsx!(span {}),
-            }
-            match &*delete_state.read() {
-                MutationState::Loading => rsx!(span { class: "ml-2 text-orange-500 animate-pulse", "Deleting..." }),
-                MutationState::Error(err) => rsx!(span { class: "ml-2 text-red-500", "{err}" }),
-                _ => rsx!(span {}),
-            }
-            match &*update_state.read() {
-                MutationState::Loading => rsx!(span { class: "ml-2 text-green-500 animate-pulse", "Updating..." }),
-                MutationState::Error(err) => rsx!(span { class: "ml-2 text-red-500", "{err}" }),
-                _ => rsx!(span {}),
+                if is_mutating {
+                    span { class: "flex items-center ml-2 gap-1",
+                        div { class: "w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" }
+                        span { class: "text-blue-600 text-sm font-medium", "{mutating_msg}" }
+                    }
+                }
             }
         }
     }
