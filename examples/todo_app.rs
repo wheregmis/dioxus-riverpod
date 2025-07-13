@@ -325,11 +325,11 @@ pub fn TodoList(filter: Filter) -> Element {
 /// Filter button component
 #[component]
 fn FilterButton(label: &'static str, filter: Filter, current: Filter) -> Element {
-    let mut set_filter = use_context::<Signal<Filter>>();
-    let is_selected = filter == *set_filter.read();
+    let mut filter_signal = use_context::<Signal<Filter>>();
+    let is_selected = filter == *filter_signal.read();
     rsx! {
         button {
-            onclick: move |_| set_filter.set(filter),
+            onclick: move |_| filter_signal.set(filter),
             class: if is_selected {
                 "px-3 py-1 font-bold rounded bg-blue-600 text-white shadow border border-blue-700 hover:bg-blue-700 transition-all"
             } else {
