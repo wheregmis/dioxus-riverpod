@@ -5,6 +5,7 @@ use dioxus::prelude::FormEvent;
 use dioxus::prelude::*;
 use dioxus_provider::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::fs;
 use tokio::time::{Duration, sleep};
 
@@ -28,9 +29,9 @@ pub enum Filter {
 #[derive(Debug, thiserror::Error)]
 pub enum TodoError {
     #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(Arc<std::io::Error>),
     #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
+    Json(Arc<serde_json::Error>),
     #[error("Todo not found")]
     NotFound,
     #[error("Unknown error: {0}")]
@@ -40,8 +41,8 @@ pub enum TodoError {
 impl Clone for TodoError {
     fn clone(&self) -> Self {
         match self {
-            TodoError::Io(e) => TodoError::Other(e.to_string()),
-            TodoError::Json(e) => TodoError::Other(e.to_string()),
+            TodoError::Io(e) => TodoError::Io(e.clone()),
+            TodoError::Json(e) => TodoError::Json(e.clone()),
             TodoError::NotFound => TodoError::NotFound,
             TodoError::Other(s) => TodoError::Other(s.clone()),
         }
@@ -67,24 +68,27 @@ const TODO_FILE: &str = "todos.json";
 async fn load_todos_from_file_async() -> Result<Vec<Todo>, TodoError> {
     match fs::read_to_string(TODO_FILE).await {
         Ok(data) => {
-            let todos: Vec<Todo> = serde_json::from_str(&data)?;
+            let todos: Vec<Todo> =
+                serde_json::from_str(&data).map_err(|e| TodoError::Json(Arc::new(e)))?;
             Ok(todos)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
-        Err(e) => Err(TodoError::Io(e)),
+        Err(e) => Err(TodoError::Io(Arc::new(e))),
     }
 }
 
 /// Provider for loading all todos from persistent storage
-#[provider]
+#[provider(stale_time = "5s", cache_expiration = "20s")]
 pub async fn load_todos() -> Result<Vec<Todo>, TodoError> {
     load_todos_from_file_async().await
 }
 
 /// Helper to write todos to file asynchronously
 async fn save_todos_to_file_async(todos: &[Todo]) -> Result<(), TodoError> {
-    let data = serde_json::to_string_pretty(todos)?;
-    fs::write(TODO_FILE, data).await?;
+    let data = serde_json::to_string_pretty(todos).map_err(|e| TodoError::Json(Arc::new(e)))?;
+    fs::write(TODO_FILE, data)
+        .await
+        .map_err(|e| TodoError::Io(Arc::new(e)))?;
     Ok(())
 }
 
@@ -195,6 +199,9 @@ pub fn TodoInput() -> Element {
 pub fn TodoItem(todo: Todo) -> Element {
     let mut editing = use_signal(|| false);
     let mut edit_text = use_signal(|| todo.title.clone());
+    let mut optimistic_title = use_signal(|| todo.title.clone());
+    let mut error_msg = use_signal(|| None as Option<String>);
+    let mut optimistic_completed = use_signal(|| todo.completed);
 
     let (toggle_state, toggle) = use_mutation(toggle_todo());
     let (delete_state, delete) = use_mutation(delete_todo());
@@ -203,13 +210,37 @@ pub fn TodoItem(todo: Todo) -> Element {
     let todo_id = todo.id;
     let todo_title = todo.title.clone();
 
-    let on_toggle = move |_| toggle(todo_id);
+    let on_toggle = {
+        let toggle = toggle.clone();
+        move |_| {
+            optimistic_completed.toggle(); // Optimistically toggle
+            error_msg.set(None);
+            toggle(todo_id);
+        }
+    };
+
+    // Listen for toggle mutation result to revert optimistic completed if error or update if success
+    use_effect(move || {
+        match &*toggle_state.read() {
+            MutationState::Error(err) => {
+                // Revert to original completed state and show error
+                optimistic_completed.set(todo.completed);
+                error_msg.set(Some(err.to_string()));
+            }
+            MutationState::Success(_) => {
+                optimistic_completed.set(todo.completed);
+            }
+            _ => {}
+        }
+    });
+
     let on_delete = move |_| delete(todo_id);
     let on_edit = {
         let todo_title = todo_title.clone();
         move |_| {
             editing.set(true);
             edit_text.set(todo_title.clone());
+            error_msg.set(None);
         }
     };
     let on_edit_input = move |e: Event<FormData>| {
@@ -217,11 +248,14 @@ pub fn TodoItem(todo: Todo) -> Element {
     };
     let mut on_edit_submit = {
         let update = update.clone();
+
         let todo_title = todo_title.clone();
         move |_| {
             let new_title = edit_text.read().trim().to_string();
             if !new_title.is_empty() && new_title != todo_title {
-                update((todo_id, new_title));
+                optimistic_title.set(new_title.clone()); // Optimistically update UI
+                error_msg.set(None);
+                update((todo_id, new_title.clone()));
             }
             editing.set(false);
         }
@@ -234,6 +268,15 @@ pub fn TodoItem(todo: Todo) -> Element {
             }
         }
     };
+
+    // Listen for update mutation result to revert optimistic title if error
+    use_effect(move || {
+        if let MutationState::Error(err) = &*update_state.read() {
+            // Revert to original title and show error
+            optimistic_title.set(todo_title.clone());
+            error_msg.set(Some(err.to_string()));
+        }
+    });
 
     // Determine which mutation is loading and set message
     let (is_mutating, mutating_msg) = if matches!(*toggle_state.read(), MutationState::Loading) {
@@ -260,14 +303,22 @@ pub fn TodoItem(todo: Todo) -> Element {
                     button { onclick: move |_| on_edit_submit(()), class: "px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-all", "Save" }
                 }
             } else {
-                input { r#type: "checkbox", checked: todo.completed, onclick: on_toggle, class: "accent-blue-600 w-5 h-5" }
-                span { onclick: on_edit, class: "flex-1 cursor-pointer select-text text-lg text-gray-900 group-hover:text-blue-700 transition-all", style: if todo.completed { "text-decoration: line-through; color: #888;" } else { "" }, "{todo.title}" }
+                input { r#type: "checkbox", checked: *optimistic_completed.read(), onclick: on_toggle, class: "accent-blue-600 w-5 h-5" }
+                span {
+                    onclick: on_edit,
+                    class: "flex-1 cursor-pointer select-text text-lg text-gray-900 group-hover:text-blue-700 transition-all",
+                    style: if *optimistic_completed.read() { "text-decoration: line-through; color: #888;" } else { "" },
+                    "{optimistic_title.read()}"
+                }
                 button { onclick: on_delete, class: "ml-2 px-2 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-all opacity-80 group-hover:opacity-100", "Delete" }
                 if is_mutating {
                     span { class: "flex items-center ml-2 gap-1",
                         div { class: "w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" }
                         span { class: "text-blue-600 text-sm font-medium", "{mutating_msg}" }
                     }
+                }
+                if let Some(err) = &*error_msg.read() {
+                    span { class: "ml-2 text-red-500 text-sm", "{err}" }
                 }
             }
         }
