@@ -37,7 +37,7 @@ impl Provider<u32> for UserProvider {
     }
 
     fn id(&self, user_id: &u32) -> String {
-        format!("user_{}", user_id)
+        format!("user_{user_id}")
     }
 }
 
@@ -59,7 +59,7 @@ impl Database {
 
     async fn log_access(&self, user_id: u32, resource: &str) -> Result<(), String> {
         // Simulate database write
-        println!("DB: User {} accessed {}", user_id, resource);
+        println!("DB: User {user_id} accessed {resource}");
         Ok(())
     }
 }
@@ -83,7 +83,7 @@ impl Provider<u32> for UserWithLoggingProvider {
     }
 
     fn id(&self, user_id: &u32) -> String {
-        format!("user_with_logging_{}", user_id)
+        format!("user_with_logging_{user_id}")
     }
 }
 

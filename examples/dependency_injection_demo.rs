@@ -7,6 +7,7 @@
 #![allow(dead_code)]
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::prelude::*;
 
 // Example dependencies that don't implement PartialEq/Hash
@@ -30,7 +31,7 @@ impl ApiClient {
         Ok(User {
             id,
             name: format!("User {} from {}", id, self.base_url),
-            email: format!("user{}@example.com", id),
+            email: format!("user{id}@example.com"),
         })
     }
 
@@ -67,7 +68,7 @@ impl Database {
     async fn log_access(&self, user_id: u32, resource: &str) -> Result<(), String> {
         // Simulate database write
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        println!("DB LOG: User {} accessed {}", user_id, resource);
+        println!("DB LOG: User {user_id} accessed {resource}");
         Ok(())
     }
 }
@@ -92,7 +93,7 @@ pub struct Post {
 
 #[provider]
 async fn fetch_user(user_id: u32) -> Result<User, String> {
-    println!("fetch_user called with user_id: {}", user_id);
+    println!("fetch_user called with user_id: {user_id}");
 
     // Dependencies are automatically injected via the inject() function
     let api_client = inject::<ApiClient>()?;
@@ -107,7 +108,7 @@ async fn fetch_user(user_id: u32) -> Result<User, String> {
 
 #[provider]
 async fn fetch_user_posts(user_id: u32) -> Result<Vec<Post>, String> {
-    println!("fetch_user_posts called with user_id: {}", user_id);
+    println!("fetch_user_posts called with user_id: {user_id}");
 
     let api_client = inject::<ApiClient>()?;
     let database = inject::<Database>()?;
@@ -121,7 +122,7 @@ async fn fetch_user_posts(user_id: u32) -> Result<Vec<Post>, String> {
 
 #[provider(cache_expiration = "30s")]
 async fn fetch_user_with_cache(user_id: u32) -> Result<User, String> {
-    println!("fetch_user_with_cache called with user_id: {}", user_id);
+    println!("fetch_user_with_cache called with user_id: {user_id}");
 
     let api_client = inject::<ApiClient>()?;
     let database = inject::<Database>()?;
@@ -135,7 +136,7 @@ async fn fetch_user_with_cache(user_id: u32) -> Result<User, String> {
 
 #[provider(stale_time = "10s")]
 async fn fetch_fresh_posts(user_id: u32) -> Result<Vec<Post>, String> {
-    println!("fetch_fresh_posts called with user_id: {}", user_id);
+    println!("fetch_fresh_posts called with user_id: {user_id}");
 
     let api_client = inject::<ApiClient>()?;
     let database = inject::<Database>()?;
@@ -151,7 +152,7 @@ async fn fetch_fresh_posts(user_id: u32) -> Result<Vec<Post>, String> {
 #[component]
 fn UserProfile(user_id: u32) -> Element {
     // Add debug output
-    println!("UserProfile rendering for user_id: {}", user_id);
+    println!("UserProfile rendering for user_id: {user_id}");
 
     // Use macro-generated providers that depend on injected dependencies
     let user = use_provider(fetch_user(), user_id);
@@ -208,7 +209,7 @@ fn UserProfile(user_id: u32) -> Element {
 #[component]
 fn CachedUserProfile(user_id: u32) -> Element {
     // Add debug output
-    println!("CachedUserProfile rendering for user_id: {}", user_id);
+    println!("CachedUserProfile rendering for user_id: {user_id}");
 
     // Use cached provider that demonstrates different cache strategies
     let cached_user = use_provider(fetch_user_with_cache(), user_id);
@@ -347,7 +348,7 @@ fn init_dependencies() -> Result<(), String> {
 fn main() {
     // Initialize dependencies first
     if let Err(e) = init_dependencies() {
-        eprintln!("Failed to initialize dependencies: {}", e);
+        eprintln!("Failed to initialize dependencies: {e}");
         std::process::exit(1);
     }
 

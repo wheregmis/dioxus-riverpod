@@ -3,6 +3,7 @@
 //! This example demonstrates the new structured error handling capabilities
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::prelude::*;
 use std::time::Duration;
 
@@ -70,7 +71,7 @@ impl ApiClient {
                 message: "User not found".to_string(),
             }),
             _ => Err(ApiError::EndpointNotFound {
-                endpoint: format!("/users/{}", id),
+                endpoint: format!("/users/{id}"),
             }),
         }
     }
@@ -104,7 +105,7 @@ async fn fetch_user_basic(user_id: u32) -> Result<User, ProviderError> {
 // Provider demonstrating UserError with dependency injection
 #[provider]
 async fn fetch_user_with_validation(user_id: u32) -> Result<User, UserError> {
-    let api_client = inject::<ApiClient>().map_err(|e| UserError::Provider(e))?;
+    let api_client = inject::<ApiClient>().map_err(UserError::Provider)?;
 
     if user_id == 0 {
         return Err(UserError::ValidationFailed {

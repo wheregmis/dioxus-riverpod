@@ -28,14 +28,19 @@
 
 use dioxus_lib::prelude::SuspendedFuture;
 use dioxus_lib::prelude::*;
-use std::{fmt::Debug, future::Future, hash::Hash, time::Duration};
+use std::{fmt::Debug, future::Future, time::Duration};
 use tracing::debug;
 
 use crate::{
-    cache::{ProviderCache, ProviderState},
+    cache::ProviderCache,
     global::{get_global_cache, get_global_refresh_registry},
     refresh::{RefreshRegistry, TaskType},
 };
+
+use crate::param_utils::IntoProviderParam;
+use crate::types::{ProviderErrorBounds, ProviderOutputBounds, ProviderParamBounds};
+
+pub use crate::provider_state::ProviderState;
 
 /// A unified trait for defining providers - async operations that return data
 ///
@@ -77,12 +82,12 @@ use crate::{
 /// ```
 pub trait Provider<Param = ()>: Clone + PartialEq + 'static
 where
-    Param: Clone + PartialEq + Hash + Debug + 'static,
+    Param: ProviderParamBounds,
 {
     /// The type of data returned on success
-    type Output: Clone + PartialEq + Send + Sync + 'static;
+    type Output: ProviderOutputBounds;
     /// The type of error returned on failure
-    type Error: Clone + PartialEq + Send + Sync + 'static;
+    type Error: ProviderErrorBounds;
 
     /// Execute the async operation
     ///
@@ -265,7 +270,7 @@ pub fn use_provider_cache() -> ProviderCache {
 pub fn use_invalidate_provider<P, Param>(provider: P, param: Param) -> impl Fn() + Clone
 where
     P: Provider<Param>,
-    Param: Clone + PartialEq + Hash + Debug + 'static,
+    Param: ProviderParamBounds,
 {
     let cache = get_provider_cache();
     let refresh_registry = get_refresh_registry();
@@ -312,76 +317,6 @@ pub fn use_clear_provider_cache() -> impl Fn() + Clone {
     }
 }
 
-/// Trait for normalizing different parameter formats to work with providers
-///
-/// This trait allows the `use_provider` hook to accept parameters in different formats:
-/// - `()` for no parameters
-/// - `(param,)` for single parameter in tuple
-/// - Common primitive types directly
-///
-/// This eliminates the need for multiple `UseProvider` implementations.
-pub trait IntoProviderParam {
-    /// The target parameter type after conversion
-    type Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static;
-
-    /// Convert the input into the parameter format expected by the provider
-    fn into_param(self) -> Self::Param;
-}
-
-// Implementation for no parameters: () -> ()
-impl IntoProviderParam for () {
-    type Param = ();
-
-    fn into_param(self) -> Self::Param {
-        ()
-    }
-}
-
-// Implementation for tuple parameters: (Param,) -> Param
-impl<T> IntoProviderParam for (T,)
-where
-    T: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
-{
-    type Param = T;
-
-    fn into_param(self) -> Self::Param {
-        self.0
-    }
-}
-
-// Common direct parameter implementations to avoid conflicts
-impl IntoProviderParam for u32 {
-    type Param = u32;
-
-    fn into_param(self) -> Self::Param {
-        self
-    }
-}
-
-impl IntoProviderParam for i32 {
-    type Param = i32;
-
-    fn into_param(self) -> Self::Param {
-        self
-    }
-}
-
-impl IntoProviderParam for String {
-    type Param = String;
-
-    fn into_param(self) -> Self::Param {
-        self
-    }
-}
-
-impl IntoProviderParam for &str {
-    type Param = String;
-
-    fn into_param(self) -> Self::Param {
-        self.to_string()
-    }
-}
-
 /// Unified trait for using providers with any parameter format
 ///
 /// This trait provides a single, unified interface for using providers
@@ -391,9 +326,9 @@ impl IntoProviderParam for &str {
 /// - Direct parameters `param`
 pub trait UseProvider<Args> {
     /// The type of data returned on success
-    type Output: Clone + PartialEq + Send + Sync + 'static;
+    type Output: ProviderOutputBounds;
     /// The type of error returned on failure
-    type Error: Clone + Send + Sync + 'static;
+    type Error: ProviderErrorBounds;
 
     /// Use the provider with the given arguments
     fn use_provider(self, args: Args) -> Signal<ProviderState<Self::Output, Self::Error>>;
@@ -424,7 +359,7 @@ fn use_provider_core<P, Param>(
 ) -> Signal<ProviderState<P::Output, P::Error>>
 where
     P: Provider<Param> + Send + Clone,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     let mut state = use_signal(|| ProviderState::Loading {
         task: spawn(async {}),
@@ -528,7 +463,7 @@ fn check_and_handle_swr_core<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     let stale_time = provider.stale_time();
     let cache_expiration = provider.cache_expiration();
@@ -586,7 +521,7 @@ fn setup_interval_task_core<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone + Send,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     if let Some(interval) = provider.interval() {
         let cache_clone = cache.clone();
@@ -624,7 +559,7 @@ fn setup_cache_expiration_task_core<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone + Send,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     if let Some(expiration) = provider.cache_expiration() {
         let cache_clone = cache.clone();
@@ -666,7 +601,7 @@ fn setup_stale_check_task_core<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone + Send,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     if let Some(stale_time) = provider.stale_time() {
         let cache_clone = cache.clone();
@@ -726,7 +661,7 @@ fn setup_intelligent_cache_management<P, Param>(
     refresh_registry: &RefreshRegistry,
 ) where
     P: Provider<Param> + Clone,
-    Param: Clone + PartialEq + Hash + Debug + Send + Sync + 'static,
+    Param: ProviderParamBounds,
 {
     // Set up periodic cleanup task for this provider if cache_expiration is configured
     if let Some(cache_expiration) = provider.cache_expiration() {
@@ -737,7 +672,7 @@ fn setup_intelligent_cache_management<P, Param>(
 
         let cache_clone = cache.clone();
         let unused_threshold = cache_expiration * 2; // Remove entries unused for 2x expiration time
-        let cleanup_key = format!("{}_cleanup", cache_key);
+        let cleanup_key = format!("{cache_key}_cleanup");
 
         refresh_registry.start_periodic_task(
             &cleanup_key,

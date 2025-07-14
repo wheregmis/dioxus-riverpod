@@ -13,12 +13,13 @@
 //! - **Rollback Support**: Automatic rollback of optimistic updates on failure
 
 use dioxus_lib::prelude::*;
-use std::{fmt::Debug, future::Future, hash::Hash};
+use std::future::Future;
 use tracing::debug;
 
 use crate::{
     global::{get_global_cache, get_global_refresh_registry},
     hooks::Provider,
+    types::ProviderParamBounds,
 };
 
 /// Represents the state of a mutation operation
@@ -121,6 +122,12 @@ where
     }
 }
 
+/// Type alias for the return type of mutation hooks
+pub type MutationHookResult<M, Input, F> = (
+    Signal<MutationState<<M as Mutation<Input>>::Output, <M as Mutation<Input>>::Error>>,
+    F,
+);
+
 /// Hook to create a mutation that can be triggered manually
 ///
 /// Returns a tuple containing:
@@ -158,12 +165,7 @@ where
 ///     }
 /// }
 /// ```
-pub fn use_mutation<M, Input>(
-    mutation: M,
-) -> (
-    Signal<MutationState<M::Output, M::Error>>,
-    impl Fn(Input) + Clone,
-)
+pub fn use_mutation<M, Input>(mutation: M) -> MutationHookResult<M, Input, impl Fn(Input) + Clone>
 where
     M: Mutation<Input> + Send + Sync + 'static,
     Input: Clone + PartialEq + Send + Sync + 'static,
@@ -246,10 +248,7 @@ where
 /// ```
 pub fn use_optimistic_mutation<M, Input>(
     mutation: M,
-) -> (
-    Signal<MutationState<M::Output, M::Error>>,
-    impl Fn(Input) + Clone,
-)
+) -> MutationHookResult<M, Input, impl Fn(Input) + Clone>
 where
     M: Mutation<Input> + Send + Sync + 'static,
     Input: Clone + PartialEq + Send + Sync + 'static,
@@ -337,7 +336,7 @@ where
 pub fn provider_cache_key<P, Param>(provider: P, param: Param) -> String
 where
     P: Provider<Param>,
-    Param: Clone + PartialEq + Hash + Debug + 'static,
+    Param: ProviderParamBounds,
 {
     provider.id(&param)
 }

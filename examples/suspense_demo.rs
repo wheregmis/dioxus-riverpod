@@ -10,7 +10,7 @@ async fn fetch_user(id: u32) -> Result<String, String> {
     if id == 0 {
         Err("User not found".to_string())
     } else {
-        Ok(format!("User #{}", id))
+        Ok(format!("User #{id}"))
     }
 }
 

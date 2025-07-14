@@ -16,6 +16,7 @@
 //! - Global provider management (NEW!)
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::{global::init_global_providers, prelude::*};
 use std::{
     sync::atomic::{AtomicU32, Ordering},
@@ -49,12 +50,9 @@ async fn fetch_quick_expiring_data() -> Result<QuickData, String> {
         .unwrap()
         .as_secs();
 
-    println!(
-        "✅ [FETCH] Quick data fetch completed - call #{}",
-        call_number
-    );
+    println!("✅ [FETCH] Quick data fetch completed - call #{call_number}");
     Ok(QuickData {
-        message: format!("Quick data call #{}", call_number),
+        message: format!("Quick data call #{call_number}"),
         fetched_at: timestamp,
         expires_in: 5,
     })
@@ -72,7 +70,7 @@ async fn fetch_medium_expiring_data() -> Result<MediumData, String> {
         .as_secs();
 
     Ok(MediumData {
-        content: format!("Medium-lived content #{}", call_number),
+        content: format!("Medium-lived content #{call_number}"),
         details: vec![
             "This data is cached for 15 seconds".to_string(),
             "After expiration, shows loading state".to_string(),
@@ -100,7 +98,7 @@ async fn fetch_long_expiring_data() -> Result<LongData, String> {
     }
 
     Ok(LongData {
-        title: format!("Long-lived data #{}", call_number),
+        title: format!("Long-lived data #{call_number}"),
         description: "This expensive operation is cached for 30 seconds".to_string(),
         metadata: DataMetadata {
             size_mb: (call_number * 2) % 100,
@@ -135,7 +133,7 @@ async fn fetch_user_cache_data(user_id: u32) -> Result<UserCacheData, String> {
             language: "en".to_string(),
             notifications: call_number % 3 == 0,
         },
-        activity_summary: format!("User {} activity summary (call #{})", user_id, call_number),
+        activity_summary: format!("User {user_id} activity summary (call #{call_number})"),
         last_login: timestamp - (call_number as u64 * 3600), // Simulate different login times
         fetched_at: timestamp,
         expires_in: 10,
@@ -205,8 +203,7 @@ fn CacheExpirationDemo() -> Element {
                 _timer_count.with_mut(|count| {
                     *count += 1;
                     println!(
-                        "⏰ Timer tick #{} - triggering re-render to check cache expiration",
-                        count
+                        "⏰ Timer tick #{count} - triggering re-render to check cache expiration"
                     );
                 });
             }
@@ -479,7 +476,7 @@ fn format_timestamp(timestamp: u64) -> String {
     let diff = now.saturating_sub(timestamp);
 
     if diff < 60 {
-        format!("{}s ago", diff)
+        format!("{diff}s ago")
     } else if diff < 3600 {
         format!("{}m ago", diff / 60)
     } else {

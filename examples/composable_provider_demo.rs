@@ -15,6 +15,7 @@
 //! - Cross-platform compatibility (web, desktop, mobile)
 
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use dioxus_provider::hooks::ProviderState;
 use dioxus_provider::prelude::*;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
