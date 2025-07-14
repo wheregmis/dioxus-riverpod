@@ -1,7 +1,6 @@
 //! Comprehensive Todo App Example using dioxus-provider
 
 use dioxus::events::Key;
-use dioxus::prelude::FormEvent;
 use dioxus::prelude::*;
 use dioxus_provider::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -153,7 +152,7 @@ pub async fn delete_todo(id: u64) -> Result<Vec<Todo>, TodoError> {
 /// Component: Input for adding a new todo
 #[component]
 pub fn TodoInput() -> Element {
-    let mut input = use_signal(|| String::new());
+    let mut input = use_signal(String::new);
     let (mutation_state, add) = use_mutation(add_todo());
 
     let mut on_submit = move |_| {
@@ -346,9 +345,9 @@ pub fn TodoList(filter: Filter) -> Element {
         div { class: "w-full",
             // Filter bar
             div { class: "flex gap-2 mb-4 justify-center",
-                FilterButton { label: "All", filter: Filter::All, current: filter }
-                FilterButton { label: "Active", filter: Filter::Active, current: filter }
-                FilterButton { label: "Completed", filter: Filter::Completed, current: filter }
+                FilterButton { label: "All", filter: Filter::All }
+                FilterButton { label: "Active", filter: Filter::Active }
+                FilterButton { label: "Completed", filter: Filter::Completed }
             }
             // Todo list
             ul {
@@ -379,7 +378,7 @@ pub fn TodoList(filter: Filter) -> Element {
 
 /// Filter button component
 #[component]
-fn FilterButton(label: &'static str, filter: Filter, current: Filter) -> Element {
+fn FilterButton(label: &'static str, filter: Filter) -> Element {
     let mut filter_signal = use_context::<Signal<Filter>>();
     let is_selected = filter == *filter_signal.read();
     rsx! {
