@@ -1,6 +1,6 @@
 //! Comprehensive Todo App Example using dioxus-provider
 
-use dioxus::events::Key;
+use dioxus::prelude::Key;
 use dioxus::prelude::*;
 use dioxus_provider::prelude::*;
 use serde::{Deserialize, Serialize};

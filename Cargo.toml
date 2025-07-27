@@ -12,13 +12,13 @@ keywords = ["dioxus", "data-fetching", "caching", "providers", "swr"]
 categories = ["gui", "asynchronous", "web-programming"]
 
 [workspace]
-members = [".", "dioxus-provider-macros"]
+members = [".", "dioxus-provider-macros", "fullstack-example"]
 
 [features]
 default = []
 
 [dependencies]
-dioxus-lib = { version = "0.7.0-alpha.1", default-features = false, features = [
+dioxus = { version = "0.7.0-alpha.3", default-features = false, features = [
     "macro",
     "hooks",
     "signals",

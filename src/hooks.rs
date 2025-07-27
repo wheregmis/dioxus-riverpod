@@ -26,8 +26,10 @@
 //! }
 //! ```
 
-use dioxus_lib::prelude::SuspendedFuture;
-use dioxus_lib::prelude::*;
+use dioxus::{
+    core::{ReactiveContext, SuspendedFuture},
+    prelude::*,
+};
 use std::{fmt::Debug, future::Future, time::Duration};
 use tracing::debug;
 
@@ -156,10 +158,10 @@ pub enum RenderError {
 }
 
 // Implement conversion so `?` works in components using Dioxus's RenderError
-impl From<RenderError> for dioxus_lib::prelude::RenderError {
+impl From<RenderError> for dioxus_core::RenderError {
     fn from(err: RenderError) -> Self {
         match err {
-            RenderError::Suspended(fut) => dioxus_lib::prelude::RenderError::Suspended(fut),
+            RenderError::Suspended(fut) => dioxus_core::RenderError::Suspended(fut),
         }
     }
 }
