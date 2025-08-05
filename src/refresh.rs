@@ -18,7 +18,7 @@
 //! - `wasmtimer` for web timing and `tokio` for desktop timing
 //! - Automatic task cleanup when components unmount
 
-use dioxus_lib::prelude::*;
+use dioxus::{core::ReactiveContext, prelude::*};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},

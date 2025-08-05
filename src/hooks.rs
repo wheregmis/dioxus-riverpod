@@ -26,8 +26,10 @@
 //! }
 //! ```
 
-use dioxus_lib::prelude::SuspendedFuture;
-use dioxus_lib::prelude::*;
+use dioxus::{
+    core::{ReactiveContext, SuspendedFuture},
+    prelude::*,
+};
 use std::{fmt::Debug, future::Future, time::Duration};
 use tracing::debug;
 
@@ -156,10 +158,10 @@ pub enum RenderError {
 }
 
 // Implement conversion so `?` works in components using Dioxus's RenderError
-impl From<RenderError> for dioxus_lib::prelude::RenderError {
+impl From<RenderError> for dioxus_core::RenderError {
     fn from(err: RenderError) -> Self {
         match err {
-            RenderError::Suspended(fut) => dioxus_lib::prelude::RenderError::Suspended(fut),
+            RenderError::Suspended(fut) => dioxus_core::RenderError::Suspended(fut),
         }
     }
 }
@@ -179,12 +181,16 @@ impl<T: Clone, E: Clone> SuspenseSignalExt<T, E> for Signal<ProviderState<T, E>>
 
 /// Get the provider cache - requires global providers to be initialized
 fn get_provider_cache() -> ProviderCache {
-    get_global_cache().clone()
+    get_global_cache()
+        .expect("Global providers not initialized")
+        .clone()
 }
 
 /// Get the refresh registry - requires global providers to be initialized
 fn get_refresh_registry() -> RefreshRegistry {
-    get_global_refresh_registry().clone()
+    get_global_refresh_registry()
+        .expect("Global providers not initialized")
+        .clone()
 }
 
 /// Hook to access the provider cache for manual cache management

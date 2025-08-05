@@ -18,7 +18,7 @@ use tokio::time::sleep as tokio_sleep;
 use wasmtimer::tokio::sleep as wasm_sleep;
 
 // Cross-platform task spawning
-use dioxus_lib::prelude::spawn as dioxus_spawn;
+use dioxus::prelude::spawn as dioxus_spawn;
 
 /// Cross-platform time utilities
 pub mod time {

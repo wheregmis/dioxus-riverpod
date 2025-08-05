@@ -1,6 +1,6 @@
 //! ProviderState: Async state enum for dioxus-provider
 
-use dioxus_lib::prelude::Task;
+use dioxus::core::Task;
 
 /// Represents the state of an async operation
 #[derive(Clone, PartialEq, Debug)]
