@@ -6,7 +6,7 @@ const MAIN_CSS: Asset = asset!("/assets/main.css");
 const HEADER_SVG: Asset = asset!("/assets/header.svg");
 
 fn main() {
-    init_global_providers();
+    let _ = init_global_providers();
     dioxus::launch(App);
 }
 

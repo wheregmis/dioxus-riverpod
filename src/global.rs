@@ -7,6 +7,15 @@ use std::sync::OnceLock;
 
 use crate::{cache::ProviderCache, refresh::RefreshRegistry};
 
+/// Error type for global provider operations
+#[derive(Debug, thiserror::Error)]
+pub enum GlobalProviderError {
+    #[error("Global providers not initialized. Call init_global_providers() first.")]
+    NotInitialized,
+    #[error("Failed to initialize global providers: {0}")]
+    InitializationFailed(String),
+}
+
 /// Global singleton instance of the provider cache
 static GLOBAL_CACHE: OnceLock<ProviderCache> = OnceLock::new();
 
@@ -39,12 +48,14 @@ static GLOBAL_REFRESH_REGISTRY: OnceLock<RefreshRegistry> = OnceLock::new();
 ///     }
 /// }
 /// ```
-pub fn init_global_providers() {
+pub fn init_global_providers() -> Result<(), GlobalProviderError> {
     // Initialize cache first
     GLOBAL_CACHE.get_or_init(ProviderCache::new);
 
     // Initialize refresh registry
     let _refresh_registry = GLOBAL_REFRESH_REGISTRY.get_or_init(RefreshRegistry::new);
+
+    Ok(())
 }
 
 /// Get the global provider cache instance
@@ -52,13 +63,13 @@ pub fn init_global_providers() {
 /// Returns the global cache that persists across the entire application lifecycle.
 /// This cache is shared by all providers regardless of component boundaries.
 ///
-/// ## Panics
+/// ## Errors
 ///
-/// Panics if `init_global_providers()` has not been called yet.
-pub fn get_global_cache() -> &'static ProviderCache {
+/// Returns `GlobalProviderError::NotInitialized` if `init_global_providers()` has not been called yet.
+pub fn get_global_cache() -> Result<&'static ProviderCache, GlobalProviderError> {
     GLOBAL_CACHE
         .get()
-        .expect("Global providers not initialized. Call init_global_providers() first.")
+        .ok_or(GlobalProviderError::NotInitialized)
 }
 
 /// Get the global refresh registry instance
@@ -66,13 +77,13 @@ pub fn get_global_cache() -> &'static ProviderCache {
 /// Returns the global refresh registry that manages reactive updates and intervals
 /// across the entire application.
 ///
-/// ## Panics
+/// ## Errors
 ///
-/// Panics if `init_global_providers()` has not been called yet.
-pub fn get_global_refresh_registry() -> &'static RefreshRegistry {
+/// Returns `GlobalProviderError::NotInitialized` if `init_global_providers()` has not been called yet.
+pub fn get_global_refresh_registry() -> Result<&'static RefreshRegistry, GlobalProviderError> {
     GLOBAL_REFRESH_REGISTRY
         .get()
-        .expect("Global providers not initialized. Call init_global_providers() first.")
+        .ok_or(GlobalProviderError::NotInitialized)
 }
 
 /// Check if global providers have been initialized
@@ -97,32 +108,70 @@ pub fn reset_global_providers() {
     panic!("Global provider reset is not currently supported. Restart the application.");
 }
 
+// Backward compatibility functions that panic for existing code
+#[deprecated(
+    since = "0.0.7",
+    note = "Use get_global_cache() with error handling instead"
+)]
+pub fn get_global_cache_panic() -> &'static ProviderCache {
+    GLOBAL_CACHE
+        .get()
+        .expect("Global providers not initialized. Call init_global_providers() first.")
+}
+
+#[deprecated(
+    since = "0.0.7",
+    note = "Use get_global_refresh_registry() with error handling instead"
+)]
+pub fn get_global_refresh_registry_panic() -> &'static RefreshRegistry {
+    GLOBAL_REFRESH_REGISTRY
+        .get()
+        .expect("Global providers not initialized. Call init_global_providers() first.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_global_provider_initialization() {
+        // If already initialized, just test that we can get the instances
+        if is_initialized() {
+            let _cache = get_global_cache().unwrap();
+            let _refresh = get_global_refresh_registry().unwrap();
+            return;
+        }
+
+        // Test initialization from scratch
         assert!(!is_initialized());
 
-        init_global_providers();
+        init_global_providers().unwrap();
 
         assert!(is_initialized());
 
         // Test that we can get all instances
-        let _cache = get_global_cache();
-        let _refresh = get_global_refresh_registry();
+        let _cache = get_global_cache().unwrap();
+        let _refresh = get_global_refresh_registry().unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Global providers not initialized")]
-    fn test_panic_when_not_initialized() {
+    fn test_error_when_not_initialized() {
         // Check if already initialized - skip test if so
         if is_initialized() {
-            panic!("Global providers not initialized"); // Manually trigger expected panic
+            return;
         }
 
-        // This should panic since we haven't called init_global_providers()
-        let _cache = get_global_cache();
+        // This should return an error since we haven't called init_global_providers()
+        assert!(get_global_cache().is_err());
+        assert!(get_global_refresh_registry().is_err());
+    }
+
+    #[test]
+    fn test_backward_compatibility() {
+        // Test that the old panic functions still work when initialized
+        init_global_providers().unwrap();
+
+        let _cache = get_global_cache_panic();
+        let _refresh = get_global_refresh_registry_panic();
     }
 }

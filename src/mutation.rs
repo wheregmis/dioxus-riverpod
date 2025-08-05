@@ -176,8 +176,10 @@ where
 
     let mutate_fn = {
         let mutation = mutation.clone();
-        let cache = cache.clone();
-        let refresh_registry = refresh_registry.clone();
+        let cache = cache.expect("Global providers not initialized").clone();
+        let refresh_registry = refresh_registry
+            .expect("Global providers not initialized")
+            .clone();
         let mut state = state;
 
         move |input: Input| {
@@ -259,8 +261,10 @@ where
 
     let mutate_fn = {
         let mutation = mutation.clone();
-        let cache = cache.clone();
-        let refresh_registry = refresh_registry.clone();
+        let cache = cache.expect("Global providers not initialized").clone();
+        let refresh_registry = refresh_registry
+            .expect("Global providers not initialized")
+            .clone();
         let mut state = state;
 
         move |input: Input| {
